@@ -14,10 +14,10 @@ def donor(rank: int, ip: str, node_gib: int, master: str) -> None:
     torch_npu.npu.set_device(rank)
     store = MooncakeDistributedStore()
     assert store.setup(local_hostname=ip, metadata_server='P2PHANDSHAKE',
-                global_segment_size=node_gib // 16 * 2**30, local_buffer_size=0,
+                global_segment_size=node_gib * 2**30 // 16, local_buffer_size=0,
                 protocol='ascend', rdma_devices='',
                 master_server_addr=master) == 0
-    print(f'STORE_READY rank={rank} bytes={node_gib // 16 * 2**30}', flush=True)
+    print(f'STORE_READY rank={rank} bytes={node_gib * 2**30 // 16}', flush=True)
     while True:
         time.sleep(30)
 

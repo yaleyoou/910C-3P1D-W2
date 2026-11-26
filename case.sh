@@ -25,10 +25,10 @@ dlog() { on 3 sudo -n docker exec "$name" cat /run-data/logs/d-blocks.jsonl | su
 for i in 0 1 2 3; do
   on "$i" test -s "$base/node.sh"
   on "$i" test -s "$base/cluster.env"
-  local_hash=$(sha256sum cluster.env | cut -d' ' -f1)
-  host_hash=$(on "$i" sha256sum "$base/cluster.env" | cut -d' ' -f1)
-  test "$local_hash" = "$host_hash" || { echo "cluster.env differs on ${roles[$i]}"; exit 1; }
-  on "$i" sudo -n docker image inspect "$IMAGE" --format '{{.Id}}'
+  local_hash=$(sha256sum cluster.env cases.tsv | cut -d' ' -f1)
+  host_hash=$(on "$i" sha256sum "$base/cluster.env" "$base/cases.tsv" | cut -d' ' -f1)
+  test "$local_hash" = "$host_hash" || { echo "cluster.env or cases.tsv differs on ${roles[$i]}"; exit 1; }
+  on "$i" sudo -n bash "$base/node.sh" check "${roles[$i]}"
   if on "$i" sudo -n docker inspect "$name" >/dev/null 2>&1; then echo "Container already exists on ${roles[$i]}";exit 1;fi
 done
 python3 tools/verify_w2.py data/checkpoints/W2/frozen
