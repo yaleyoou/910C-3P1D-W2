@@ -4,6 +4,17 @@
 
 先跑 F1。P1、P2、P3 各启动一个 TP16 prefill 实例，D 启动一个 TP16 decode 实例。每个 P 贡献 64 GiB Mooncake Store，D Store 配 0 GiB，D sparse 配 192 GiB。这样两池总预算仍是 **384 GiB**。三台 P 的 HBM、本地前缀缓存和算力都参与实验，和旧 1P1D 的比较包含这项拓扑变化。四台新机器尚未实跑，旧 F1 的 106.39 tok/s 和 80.93% 是历史参考值。
 
+## 从 GitHub 恢复完整部署包
+
+在能访问此私有仓库的 Linux 主机上执行以下命令。已有 GitHub CLI 登录时可跳过第一行。脚本从 Release 下载原镜像的五个分片、985 条 W2 请求和 MemFabric 运行库，校验 SHA-256 并恢复目录。权重按第 2 节从共享盘分发。
+
+```bash
+gh auth login --hostname github.com
+gh repo clone yaleyoou/910C-3P1D-W2
+cd 910C-3P1D-W2
+bash fetch_assets.sh
+```
+
 ## 1. 准备四台主机
 
 每台需 Linux ARM64、可用的 910C 驱动和固件、8 张卡的 16 个可见 die，以及可用的 Docker Engine。容器提供 vLLM、vLLM-Ascend、Mooncake、CANN 用户态环境。精确软件栈是 vLLM 0.30.0+empty、vLLM-Ascend 0.30.1.dev22+g4ebfc1f4c、Mooncake 0.3.13，以及随包挂载的 MemFabric 1.3.1 4T 补丁。四台需要能通过原传输方式访问彼此的 NPU fabric；仅管理 IP 能 ping 通还不足以验证 SDMA/HCCS。D Store 大于 0 时，Store donor 和模型共用设备，核对设备共享设置。
