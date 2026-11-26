@@ -6,7 +6,7 @@
 
 ## 从 GitHub 恢复完整部署包
 
-在能访问此私有仓库的 Linux 主机上执行以下命令。已有 GitHub CLI 登录时可跳过第一行。脚本从 Release 下载原镜像的105 个分片、985 条 W2 请求和 MemFabric 运行库，校验 SHA-256 并恢复目录。权重按第 2 节从共享盘分发。
+在能访问此私有仓库的 Linux 主机上执行以下命令。已有 GitHub CLI 登录时可跳过第一行。脚本从 Release 下载原镜像的836 个分片、985 条 W2 请求和 MemFabric 运行库，校验 SHA-256 并恢复目录。权重按第 2 节从共享盘分发。
 
 ```bash
 gh auth login --hostname github.com
