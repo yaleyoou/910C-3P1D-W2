@@ -49,6 +49,15 @@ done
 
 在本地目录执行 `shasum -a 256 -c assets.sha256`，两项都应显示 OK。随后把这个目录复制到四台机器的**同一个绝对路径**，例如 `/data/910C-3P1D-W2`。四台若共享这个目录，只复制一次。控制机 P1 需要能用普通 SSH 登录 P2、P3、D。自动脚本使用已有的 `sudo -n` Docker 权限。不同登录账号可以在 P1 设置 `SSH_P2=user@host`、`SSH_P3=user@host`、`SSH_D=user@host`。若这些 sudo 权限不可用，使用后面的手动流程。
 
+需要重新下载时，在**能访问 ModelScope 且能写目标磁盘**的机器上安装 ModelScope CLI 并下载。第二个可选参数是模型仓库 revision，省略时下载上游默认版本。复现实验优先使用原共享盘的权重。
+
+```bash
+python3 -m pip install modelscope
+bash tools/download_model.sh /data/models/GLM-5.2-w4a8c8
+```
+
+只通 GitHub 的节点可从本仓库取得脚本，但下载权重需要访问 [ModelScope 模型仓库](https://www.modelscope.cn/models/Eco-Tech/GLM-5.2-w4a8c8)。这些节点直接挂载已有权重，或使用下面的 rsync 步骤。
+
 原权重保存在 node25 共享盘的 `/home/youxingye/youxingye_data/models/GLM-5.2-w4a8c8`。新节点可见同一个挂载时直接设置 MODEL_DIR。否则在能读到权重且能 SSH 到新节点的机器上执行，目标目录由当前账号持有：
 
 ```bash
