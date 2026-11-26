@@ -1,0 +1,77 @@
+quay.io/ascend/vllm-ascend@sha256:ffa4abd735dda9894675d5ee7f926c6cc70feefd0c4ba9182382782b10abbbc1: Pulling from ascend/vllm-ascend
+2ea2e315627a: Pulling fs layer
+5001ca1a4398: Pulling fs layer
+1186b2ceeeec: Pulling fs layer
+7177b1f54446: Pulling fs layer
+7177b1f54446: Waiting
+176fc22a9e3f: Pulling fs layer
+f0db2360396b: Pulling fs layer
+0bf1af455817: Pulling fs layer
+aa7d1e3bcb24: Pulling fs layer
+5e8100d5ae81: Pulling fs layer
+f0db2360396b: Waiting
+bd5ce6f0c493: Pulling fs layer
+aa7d1e3bcb24: Waiting
+0bf1af455817: Waiting
+5e8100d5ae81: Waiting
+e4e225b98fd9: Pulling fs layer
+0c977c168b91: Pulling fs layer
+42eeb677645b: Pulling fs layer
+0c977c168b91: Waiting
+b468af4eeed5: Pulling fs layer
+bd5ce6f0c493: Waiting
+e4e225b98fd9: Waiting
+7c4b6dccff40: Pulling fs layer
+b468af4eeed5: Waiting
+42eeb677645b: Waiting
+b07757a78e72: Pulling fs layer
+b07757a78e72: Waiting
+2ea2e315627a: Verifying Checksum
+2ea2e315627a: Download complete
+2ea2e315627a: Pull complete
+1186b2ceeeec: Verifying Checksum
+1186b2ceeeec: Download complete
+5001ca1a4398: Verifying Checksum
+5001ca1a4398: Download complete
+176fc22a9e3f: Verifying Checksum
+176fc22a9e3f: Download complete
+5001ca1a4398: Pull complete
+0bf1af455817: Verifying Checksum
+0bf1af455817: Download complete
+f0db2360396b: Download complete
+1186b2ceeeec: Pull complete
+aa7d1e3bcb24: Verifying Checksum
+aa7d1e3bcb24: Download complete
+bd5ce6f0c493: Verifying Checksum
+bd5ce6f0c493: Download complete
+5e8100d5ae81: Verifying Checksum
+5e8100d5ae81: Download complete
+7177b1f54446: Verifying Checksum
+7177b1f54446: Download complete
+0c977c168b91: Verifying Checksum
+0c977c168b91: Download complete
+7177b1f54446: Pull complete
+176fc22a9e3f: Pull complete
+f0db2360396b: Pull complete
+0bf1af455817: Pull complete
+aa7d1e3bcb24: Pull complete
+5e8100d5ae81: Pull complete
+bd5ce6f0c493: Pull complete
+42eeb677645b: Verifying Checksum
+42eeb677645b: Download complete
+7c4b6dccff40: Download complete
+b468af4eeed5: Verifying Checksum
+b468af4eeed5: Download complete
+b07757a78e72: Verifying Checksum
+b07757a78e72: Download complete
+e4e225b98fd9: Verifying Checksum
+e4e225b98fd9: Download complete
+e4e225b98fd9: Pull complete
+0c977c168b91: Pull complete
+42eeb677645b: Pull complete
+b468af4eeed5: Pull complete
+7c4b6dccff40: Pull complete
+b07757a78e72: Pull complete
+Digest: sha256:ffa4abd735dda9894675d5ee7f926c6cc70feefd0c4ba9182382782b10abbbc1
+Status: Downloaded newer image for quay.io/ascend/vllm-ascend@sha256:ffa4abd735dda9894675d5ee7f926c6cc70feefd0c4ba9182382782b10abbbc1
+quay.io/ascend/vllm-ascend@sha256:ffa4abd735dda9894675d5ee7f926c6cc70feefd0c4ba9182382782b10abbbc1

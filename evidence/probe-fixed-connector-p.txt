@@ -1,0 +1,88 @@
+{
+  "versions": {
+    "vllm": "0.30.0+empty",
+    "vllm-ascend": "0.30.1.dev22+g4ebfc1f4c",
+    "mooncake-transfer-engine": "0.3.13",
+    "memfabric-hybrid": "1.3.0",
+    "torch-npu": "2.10.0.post7"
+  },
+  "source_hashes": {
+    "ascend_config.py": "8595413ba51a2545589d8900148e228293af73c38f4460e740d66fdf962f7d32",
+    "distributed/kv_transfer/sparse_kv_offload/sparse_kv_offload_manager.py": "ae37dae79901112248f780681097f216fbc302aec7aba0bac208569bacbba99b",
+    "distributed/kv_transfer/kv_p2p/sfa_pd_rd2h/connector.py": "ed7722a252ff647ca39c011c9f923889d80402ceab1c781f0e372152a7e7a946",
+    "patch/platform/patch_indexer_kv_dtype.py": "425b40d524e4e7341afcce5a20b83daffe39ec2491ed78853d1117e879e2bcf7",
+    "model_executor/offloader/base.py": "87b2412d85b7fa3ce80851ecdb937619bdce7f25e210c92955155b9412b71083"
+  },
+  "missing": [],
+  "model": {
+    "architectures": [
+      "GlmMoeDsaForCausalLM"
+    ],
+    "dtype": "bfloat16",
+    "num_hidden_layers": 78,
+    "index_topk": 2048,
+    "vocab_size": 154880,
+    "max_position_embeddings": 1048576
+  },
+  "quant_description_sha256": "3386f968cd7049fe95f896c1a1aeacaa5c1c0659ac2ed9a42cd783cc48ef29ba"
+}
+INFO 11-07 20:20:41 [__init__.py:52] Available plugins for group vllm.platform_plugins:
+INFO 11-07 20:20:41 [__init__.py:54] - ascend -> vllm_ascend:register
+INFO 11-07 20:20:41 [__init__.py:57] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
+INFO 11-07 20:20:41 [__init__.py:272] Platform plugin ascend is activated
+INFO 11-07 20:20:42 [platform.py:74] Breakable CUDAGraph on Ascend is opt-in; using VLLM_USE_BREAKABLE_CUDAGRAPH=0.
+INFO 11-07 20:20:51 [patch_indexer_kv_dtype.py:102] Patched AttentionConfig.indexer_kv_dtype to accept 'int8' (DeepSeek V4 Ascend indexer K cache dtype).
+INFO 11-07 20:20:51 [patch_kv_cache_dtype.py:117] Patched CacheConfig.cache_dtype to accept 'int8' and 'mxfp8' (Ascend KV cache dtypes).
+PROBE: initialize NPU context before native offload imports
+PROBE: native offload and sparse operators available
+INFO 11-07 20:20:52 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.netloader.netloader.ModelNetLoaderElastic'>` with load format `netloader`
+INFO 11-07 20:20:52 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.rfork.rfork_loader.RForkModelLoader'>` with load format `rfork`
+WARNING 11-07 20:20:52 [indexer_topk.py:29] Failed to import the DeepSelect extension (vllm._deepselect_C): No module named 'vllm._deepselect_C'
+INFO 11-07 20:21:04 [model.py:692] Resolved architecture: GlmMoeDsaForCausalLM
+INFO 11-07 20:21:04 [model.py:2030] Using max model len 256000
+WARNING 11-07 20:21:05 [vllm.py:1547] Enforce eager set, disabling torch.compile and CUDAGraphs. This is equivalent to setting -cc.mode=none -cc.cudagraph_mode=none
+WARNING 11-07 20:21:05 [vllm.py:1570] Inductor compilation was disabled by user settings, optimizations settings that are only active during inductor compilation will be ignored.
+INFO 11-07 20:21:05 [kernel.py:416] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native'], gelu_and_mul_sparse=['native'])
+INFO 11-07 20:21:05 [vllm.py:1780] Cudagraph is disabled under eager mode
+WARNING 11-07 20:21:05 [platform.py:731] GPU-specific parameter is not supported on Ascend. parameter=disable_cascade_attn, value=True, action: resetting to False.
+INFO 11-07 20:21:05 [platform.py:945] The timeout interval of the HCCL operator is 1836s. Timeout in seconds for execute_model RPC calls in multiprocessing must be greater than 1836s, Set VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS=3000
+INFO 11-07 20:21:05 [ascend_config.py:332] Dynamic EPLB is False
+INFO 11-07 20:21:05 [ascend_config.py:333] The number of redundant experts is 0
+INFO 11-07 20:21:05 [ascend_config.py:769] FlashComm1 is disabled. Using flashinfer_all2allv as the all2all backend.
+INFO 11-07 20:21:05 [platform.py:1219] Compilation disabled, using eager mode by default
+INFO 11-07 20:21:05 [platform.py:1464] Set PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
+INFO 11-07 20:21:15 [compilation.py:336] Enabled custom fusions: norm_quant, act_quant
+CONFIG_OK bf16 p
+INFO 11-07 20:21:15 [model.py:692] Resolved architecture: GlmMoeDsaForCausalLM
+INFO 11-07 20:21:15 [model.py:2030] Using max model len 256000
+INFO 11-07 20:21:15 [kernel.py:416] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native'], gelu_and_mul_sparse=['native'])
+WARNING 11-07 20:21:15 [platform.py:731] GPU-specific parameter is not supported on Ascend. parameter=disable_cascade_attn, value=True, action: resetting to False.
+INFO 11-07 20:21:15 [ascend_config.py:332] Dynamic EPLB is False
+INFO 11-07 20:21:15 [ascend_config.py:333] The number of redundant experts is 0
+INFO 11-07 20:21:15 [platform.py:1464] Set PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
+CONFIG_OK bf16 d
+INFO 11-07 20:21:15 [model.py:692] Resolved architecture: GlmMoeDsaForCausalLM
+INFO 11-07 20:21:15 [model.py:2030] Using max model len 256000
+INFO 11-07 20:21:15 [kernel.py:416] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native'], gelu_and_mul_sparse=['native'])
+WARNING 11-07 20:21:15 [platform.py:731] GPU-specific parameter is not supported on Ascend. parameter=disable_cascade_attn, value=True, action: resetting to False.
+INFO 11-07 20:21:15 [ascend_config.py:332] Dynamic EPLB is False
+INFO 11-07 20:21:15 [ascend_config.py:333] The number of redundant experts is 0
+INFO 11-07 20:21:15 [platform.py:1219] Compilation disabled, using eager mode by default
+INFO 11-07 20:21:15 [platform.py:1464] Set PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
+CONFIG_OK int8 p
+INFO 11-07 20:21:16 [model.py:692] Resolved architecture: GlmMoeDsaForCausalLM
+INFO 11-07 20:21:16 [model.py:2030] Using max model len 256000
+INFO 11-07 20:21:16 [kernel.py:416] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native'], gelu_and_mul_sparse=['native'])
+WARNING 11-07 20:21:16 [platform.py:731] GPU-specific parameter is not supported on Ascend. parameter=disable_cascade_attn, value=True, action: resetting to False.
+INFO 11-07 20:21:16 [ascend_config.py:332] Dynamic EPLB is False
+INFO 11-07 20:21:16 [ascend_config.py:333] The number of redundant experts is 0
+INFO 11-07 20:21:16 [platform.py:1464] Set PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
+CONFIG_OK int8 d
+PROBE_OK
+/usr/local/python3.12.16/lib/python3.12/site-packages/triton/language/extra/cann/extension/math_ops.py:13: FutureWarning: triton.language.extra.cann.extension.atan2 is deprecated and will be removed in the next release; use triton.language.extra.cann.libdevice.atan2 instead.
+  @_deprecated(replacement="triton.language.extra.cann.libdevice.atan2")
+/usr/local/python3.12.16/lib/python3.12/site-packages/triton/language/extra/cann/extension/math_ops.py:35: FutureWarning: triton.language.extra.cann.extension.isfinited is deprecated and will be removed in the next release; use triton.language.extra.cann.libdevice.isfinited instead.
+  @_deprecated(replacement="triton.language.extra.cann.libdevice.isfinited")
+/usr/local/python3.12.16/lib/python3.12/site-packages/triton/language/extra/cann/extension/math_ops.py:49: FutureWarning: triton.language.extra.cann.extension.finitef is deprecated and will be removed in the next release; use triton.language.extra.cann.libdevice.finitef instead.
+  @_deprecated(replacement="triton.language.extra.cann.libdevice.finitef")
+

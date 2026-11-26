@@ -1,0 +1,9 @@
+case	D_store_GiB	D_sparse_GiB
+F1	0	192
+F2	32	160
+F3	64	128
+F4	128	64
+F5	16	176
+EC1	64	192
+ES1	0	256
+EJ1	64	256

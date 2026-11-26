@@ -1,0 +1,64 @@
+diff --git a/src/hybm/csrc/common/hybm_define.h b/src/hybm/csrc/common/hybm_define.h
+index 56c2458..da54c5a 100644
+--- a/src/hybm/csrc/common/hybm_define.h
++++ b/src/hybm/csrc/common/hybm_define.h
+@@ -61,9 +61,9 @@ constexpr uint64_t HYBM_GVM_MAX_POOL_SIZE = 128ULL << 40; // 128T, 910C暂时只
+ constexpr uint64_t HYBM_GLOBAL_GVM_START_ADDR = 0x280040000000UL;    // 40T+1G,偏移1G规避底层问题
+ constexpr uint64_t HYBM_GLOBAL_GVM_START_ADDR_A5 = 0x340000000000UL; // 不同HDK版本差异有点大
+ 
+-// offload 独立 GVA/DVA 区段：常规 GVM 区的最前 2TB，与非 offload 模块(BM/SHM)物理隔离。
+-constexpr uint64_t HYBM_OFFLOAD_VA_SIZE = 2ULL * TB;                        // 2T
+-constexpr uint64_t HYBM_OFFLOAD_VA_START_ADDR = HYBM_GLOBAL_GVM_START_ADDR; // 常规区最前2T起点
++// offload 独立 GVA/DVA 区段：常规 GVM 区的最前 4TB，与非 offload 模块(BM/SHM)物理隔离。
++constexpr uint64_t HYBM_OFFLOAD_VA_SIZE = 4ULL * TB;                        // 4T
++constexpr uint64_t HYBM_OFFLOAD_VA_START_ADDR = HYBM_GLOBAL_GVM_START_ADDR; // 常规区最前4T起点
+ constexpr uint64_t HYBM_OFFLOAD_VA_END_ADDR = HYBM_GLOBAL_GVM_START_ADDR + HYBM_OFFLOAD_VA_SIZE;
+ constexpr uint64_t HYBM_OFFLOAD_VA_START_ADDR_A5 = HYBM_GLOBAL_GVM_START_ADDR_A5;
+ constexpr uint64_t HYBM_OFFLOAD_VA_END_ADDR_A5 = HYBM_GLOBAL_GVM_START_ADDR_A5 + HYBM_OFFLOAD_VA_SIZE;
+diff --git a/src/hybm/csrc/mm/hybm_va_manager.cpp b/src/hybm/csrc/mm/hybm_va_manager.cpp
+index 41df1d5..a617a23 100644
+--- a/src/hybm/csrc/mm/hybm_va_manager.cpp
++++ b/src/hybm/csrc/mm/hybm_va_manager.cpp
+@@ -589,7 +589,7 @@ uint64_t HybmVaManager::AllocReserveLvaInner(uint64_t size, uint32_t type, hybm_
+         return 0;
+     }
+     // VA 区段选择：常规 GVM 区按 scene 物理隔离。
+-    // HYBM_SCENE_OFFLOAD       → 搜索 [OFFLOAD_VA_START, OFFLOAD_VA_END)（最前2T）
++    // HYBM_SCENE_OFFLOAD       → 搜索 [OFFLOAD_VA_START, OFFLOAD_VA_END)（最前4T）
+     // 其他(BM/SHM/Trans/...)   → 搜索 [GVM_START_ADDR, GVM_END)，HYBM_GVM_START_ADDR 已等于 OFFLOAD_VA_END_ADDR
+     uint64_t startAddr;
+     uint64_t endAddr;
+diff --git a/test/ut/testcase/hybm/mm/hybm_vmm_based_segment_test.cpp b/test/ut/testcase/hybm/mm/hybm_vmm_based_segment_test.cpp
+index 1e5217e..29e37a5 100644
+--- a/test/ut/testcase/hybm/mm/hybm_vmm_based_segment_test.cpp
++++ b/test/ut/testcase/hybm/mm/hybm_vmm_based_segment_test.cpp
+@@ -416,3 +416,29 @@ TEST_F(HybmVmmBasedSegmentTest, MemoryInRange_ErrorBranches)
+     EXPECT_FALSE(seg.MemoryInRange(reinterpret_cast<void *>(0x20000000), static_cast<uint64_t>(GB) + 1));
+     EXPECT_TRUE(seg.MemoryInRange(reinterpret_cast<void *>(0x20000000), 4096)); // 4096
+ }
++
++TEST_F(HybmVmmBasedSegmentTest, OffloadTp16Allows256GiBReservation)
++{
++    MemSegmentOptions opts;
++    opts.segType = HYBM_MST_DRAM;
++    opts.maxSize = 256ULL * GB;
++    opts.rankCnt = 16;
++    opts.size = 0;
++    opts.scene = HYBM_SCENE_OFFLOAD;
++    opts.enable56BitsGva = false;
++    HybmVmmBasedSegment seg(opts, 0);
++    EXPECT_EQ(seg.ValidateOptions(), BM_OK);
++}
++
++TEST_F(HybmVmmBasedSegmentTest, OffloadTp16RejectsReservationBeyondWindow)
++{
++    MemSegmentOptions opts;
++    opts.segType = HYBM_MST_DRAM;
++    opts.maxSize = 257ULL * GB;
++    opts.rankCnt = 16;
++    opts.size = 0;
++    opts.scene = HYBM_SCENE_OFFLOAD;
++    opts.enable56BitsGva = false;
++    HybmVmmBasedSegment seg(opts, 0);
++    EXPECT_EQ(seg.ValidateOptions(), BM_INVALID_PARAM);
++}

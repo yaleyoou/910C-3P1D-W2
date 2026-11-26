@@ -1,0 +1,2 @@
+[console_scripts]
+mfcli = memfabric_hybrid.cli:main

@@ -1,0 +1,2 @@
+Image archive SHA-256 e07158bf61731488e237d2f7a3fe1730779d11c141d045e3c4df8367835e9965
+W2 and 4T shared libraries verified.

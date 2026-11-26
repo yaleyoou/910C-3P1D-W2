@@ -1,0 +1,15 @@
+{
+  "events": [
+    "alloc",
+    "ready",
+    "finish"
+  ],
+  "block_size": 128,
+  "tokens": 10258,
+  "slots": 81,
+  "hashes": 80,
+  "keys": 80,
+  "matching_extents": {
+    "glm-q@dcp:0@head_or_tp_rank:0@pp_rank:0@group:0@cache_role:kv@cache_family:default": 80
+  }
+}

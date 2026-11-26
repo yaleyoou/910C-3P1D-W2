@@ -1,0 +1,11 @@
+{
+  "base_commit": "137c52fb9f4275c80acc51d73e09928aee86b2d5",
+  "offload_window_TiB": 4,
+  "tests_passed": 137,
+  "libraries": {
+    "libacc_tcp_net.so": "926b69043da4fbbfc66be7e3da91e5a0c92aeb4953fcfbc98c540762630abc57",
+    "libmf_smem.so": "8b5219116fe9c16909df03b249743b3464d01d54c7d8ba65257b9fcaaf7cf4fd",
+    "libmf_hybm_core.so": "8c096b7a2250513e3b234a8f654e449a05d78ad84d9326ef2a9189e2eb392588",
+    "libmf_acc_offload.so": "b89009158997c45f10b3ced5b2e7239e542d392e3b0512c9b5adf2ada125a178"
+  }
+}
