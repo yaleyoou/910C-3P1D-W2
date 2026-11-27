@@ -32,51 +32,22 @@ MODEL_DIR=/home/caofei/GLM-5.2-w4a8
 
 ## 从 GitHub 恢复完整部署包
 
-### curl 无法解析 github.com
-
-若安装时显示 `curl: (6) Could not resolve host: github.com`，请先在出错节点的同一个终端运行以下命令。若有单独的集群登录节点，也在那里执行一次，比较结果。
+在 P1 或能访问 GitHub 的 Linux 登录节点执行。公开仓库和 Release 附件均可直接用 HTTPS 下载，无需 gh、GitHub 账号或上传权限。以下示例假定当前账户可写 /data。
 
 ```bash
-hostname
-getent ahosts github.com
-curl -ILsS --connect-timeout 5 --max-time 15 -o /dev/null -w 'GitHub HTTP %{http_code}\n' https://github.com/
-```
-
-- **登录节点能访问，P1 不能**：如果它们共享一块可写盘，在登录节点的共享目录克隆仓库并运行 `bash fetch_assets.sh`，下载并还原整个部署目录。P1、P2、P3、D 直接进入这个目录，各自执行 `sudo bash node.sh load`。只有下载机需要 gh。若下载机是 x86_64，请使用适合它的 gh。
-- **P1 返回 HTTP 200**：重新执行下方安装命令。若首页成功但安装包仍失败，查看 curl 错误中的具体主机名，下载 Release 时可能在重定向后失败。
-- **两处都无法解析或连接**：向管理员确认允许下载 GitHub Release 的节点、集群指定的 DNS 或 HTTPS 代理。浏览器可用 GitHub 时，也要确认运行 curl 的终端是否使用相同出口。
-
-### 在 ARM64 下载机上安装 gh
-
-如果 P1 提示 `bash: gh: command not found`，先运行 `uname -m`。显示 `aarch64` 时，在 **P1 的普通用户 shell** 从 GitHub 官方 Release 安装 Linux ARM64 版。此步骤只需在负责下载部署包的机器上执行。命令从 `gh` 开头，无需在前面加 `bash`。
-
-```bash
-(
-  set -e
-  cd "$(mktemp -d)"
-  pkg=gh_2.83.2_linux_arm64
-  curl -fL --retry 3 -o "$pkg.tar.gz" "https://github.com/cli/cli/releases/download/v2.83.2/$pkg.tar.gz"
-  echo "b1a0c0a0fcf18524e36996caddc92a062355ed014defc836203fe20fba75a38e  $pkg.tar.gz" | sha256sum -c -
-  tar -xzf "$pkg.tar.gz" "$pkg/bin/gh"
-  install -Dm755 "$pkg/bin/gh" "$HOME/.local/bin/gh"
-)
-export PATH="$HOME/.local/bin:$PATH"
-gh --version
-```
-
-如果重新登录后又找不到 gh，将上面的 `export PATH=...` 加入 `~/.bashrc`。无图形界面的 P1 也可使用 `gh auth login --hostname github.com --git-protocol https --web`，按终端提示在自己电脑的浏览器完成设备授权。已能读取完整离线包的其他节点可直接加载镜像。
-
-在有 GitHub CLI、Git 和 zstd 的 Linux 主机上执行以下命令。示例假定当前账户可写 /data。按 main 分支取当前教程，离线附件取自 w2-v1。已有 GitHub CLI 登录时可跳过第一行。脚本从 Release 下载原镜像的 836 个分片、985 条 W2 请求和 MemFabric 运行库，校验 SHA-256 并恢复目录。权重按第 2 节从共享盘分发。
-
-```bash
-gh auth login --hostname github.com
 cd /data
-gh repo clone yaleyoou/910C-3P1D-W2
+git clone --depth 1 https://github.com/yaleyoou/910C-3P1D-W2.git
 cd 910C-3P1D-W2
 bash fetch_assets.sh
 ```
 
-已克隆仓库的机器可在 main 分支执行 `git pull --ff-only`。请保留自己修改的 cluster.env，并将新的配置项合并到本机配置。已还原的镜像、W2 和运行库可以继续使用。
+**已经克隆过**：在仓库目录运行 `git pull --ff-only && bash fetch_assets.sh`。脚本使用 curl 下载并校验 836 个镜像分片、W2 回放包和 MemFabric 运行库，随后拼接镜像并解包。中断后重跑同一条脚本命令即可，已通过 SHA-256 校验的文件会被复用。已有完整权重时直接使用 cluster.env 中的模型路径。
+
+如果克隆成功但 Release 下载失败，可在同一终端用下面的命令检查附件地址及其重定向。若只有登录节点能下载，在共享盘的仓库目录完成下载，再到每台 910C 执行第 3 节的镜像加载。
+
+```bash
+curl -IL --connect-timeout 10 https://github.com/yaleyoou/910C-3P1D-W2/releases/download/w2-v1/memfabric-complete.tar.gz
+```
 
 ## 1. 准备四台主机
 
