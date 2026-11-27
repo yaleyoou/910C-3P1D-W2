@@ -38,14 +38,40 @@ MODEL_DIR=/home/caofei/GLM-5.2-w4a8
 
 避免 `scp` 逐个传输 836 个小分片的开销，上传前即可发现缺失或损坏的分片，也能为服务器节省约 6.5 GiB 临时空间（Windows 当前盘需至少 7 GiB 空闲空间）。
 
-在 Windows PowerShell 进入 `images` 目录执行：
+#### 使用 Git Bash（最简洁，推荐）
+
+在 `images` 文件夹右键打开 **Git Bash** 执行：
+
+```bash
+# 1. 检查 838 个必需文件是否齐全（也能发现浏览器重复下载带 "(1)" 后缀的情况）
+missing=0
+for f in $(printf 'image.seg-%04d\n' {0..835}) memfabric-complete.tar.gz w2-data.tar.gz; do
+  if [[ ! -f "$f" ]]; then echo "MISSING: $f"; missing=$((missing + 1)); fi
+done
+echo "Missing count: $missing"
+
+# 2. Missing count 为 0 后，按 0000 -> 0835 顺序合并为 image.tar.zst（约 6.53 GiB）
+printf 'image.seg-%04d\n' {0..835} | xargs cat > image.tar.zst
+
+# 3. 二进制模式校验三个核心文件的 SHA-256
+sha256sum -c <<'EOF'
+0e7cfc4416208ccb7b7c90cac31d0d0bc5d8e2dd224058c8b6d9c03d1f7351e4 *image.tar.zst
+afcf64db37d5ec1e1c2edecc2ba9fa101b9ec73c673a30ecc25530bf07a1ed85 *memfabric-complete.tar.gz
+9d4293a9ca6d3a1570e25f42c69191503b0553589c6d866f1ea241b5d797e54b *w2-data.tar.gz
+EOF
+
+# 4. 三项全部 OK 后，只传这 3 个文件到服务器仓库根目录
+scp image.tar.zst memfabric-complete.tar.gz w2-data.tar.gz 910a3_27:/你的仓库路径/910C-3P1D-W2/
+```
+
+<details>
+<summary>如果改用 Windows PowerShell（展开查看）</summary>
 
 ```powershell
 cd C:\你的路径\images
 $ErrorActionPreference = 'Stop'
 $dir = (Get-Location).ProviderPath
 
-# 1. 检查 838 个必需文件是否齐全
 $missing = @(0..835 | ForEach-Object { 'image.seg-{0:D4}' -f $_ } | Where-Object { -not (Test-Path $_) })
 foreach ($f in @('memfabric-complete.tar.gz', 'w2-data.tar.gz')) {
     if (-not (Test-Path $f)) { $missing += $f }
@@ -56,7 +82,6 @@ if ($missing.Count -gt 0) {
     throw "请先补齐文件或去掉浏览器重复下载后缀再合并"
 }
 
-# 2. 按 0000 -> 0835 顺序合并为 image.tar.zst（约 6.53 GiB）
 $out = [IO.File]::Create((Join-Path $dir 'image.tar.zst'))
 try {
     foreach ($i in 0..835) {
@@ -67,7 +92,6 @@ try {
     $out.Dispose()
 }
 
-# 3. 校验三个核心文件的 SHA-256
 $expected = @{
     'image.tar.zst'             = '0e7cfc4416208ccb7b7c90cac31d0d0bc5d8e2dd224058c8b6d9c03d1f7351e4'
     'memfabric-complete.tar.gz' = 'afcf64db37d5ec1e1c2edecc2ba9fa101b9ec73c673a30ecc25530bf07a1ed85'
@@ -78,13 +102,11 @@ foreach ($name in $expected.Keys) {
     if ($h -eq $expected[$name]) { Write-Host "OK   $name" -ForegroundColor Green }
     else { Write-Host "FAIL $name (got $h)" -ForegroundColor Red }
 }
-```
 
-三项全部输出 `OK` 后，将 3 个文件上传到服务器仓库根目录：
-
-```powershell
 scp.exe .\image.tar.zst .\memfabric-complete.tar.gz .\w2-data.tar.gz 910a3_27:/你的仓库路径/910C-3P1D-W2/
 ```
+
+</details>
 
 上传完成后直接跳到下方「服务器端解包、校验与导入镜像」。
 
@@ -92,10 +114,10 @@ scp.exe .\image.tar.zst .\memfabric-complete.tar.gz .\w2-data.tar.gz 910a3_27:/�
 
 适合 Windows 本地盘空间不足时使用。服务器目标盘需至少 15 GiB 空闲空间（836 个分片与合并后的 `image.tar.zst` 会短暂并存）。
 
-1. 在 Windows PowerShell 上传到与仓库同盘的临时目录：
+1. 在 Windows Git Bash 上传到与仓库同盘的临时目录：
 
-```powershell
-scp.exe -r C:\你的路径\images 910a3_27:/你的仓库路径/w2-images
+```bash
+scp -r /c/你的路径/images 910a3_27:/你的仓库路径/w2-images
 ```
 
 2. 登录 `910a3_27`，离线校验 838 个文件并拼接镜像：
