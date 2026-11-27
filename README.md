@@ -30,6 +30,27 @@ MODEL_DIR=/home/caofei/GLM-5.2-w4a8
 
 四台使用相同的部署目录和同一份配置。若共享挂载，只编辑、解包一次。若为独立磁盘，先把恢复好的部署目录同步到各台的相同绝对路径，再同步权重。管理网与业务网分开时，在配置中按实际登录方式设置 `SSH_P2`、`SSH_P3`、`SSH_D`。下载、驱动及镜像准备见下文第 1–3 节。
 
+## Windows 只下载 Docker 镜像
+
+在 Windows 浏览器中打开 [download-image.ps1](download-image.ps1)，在文件右上角点 **Download raw file**，存到空间至少 14 GiB 的目录。打开该目录的 PowerShell，执行：
+
+```powershell
+.\download-image.ps1
+```
+
+脚本从 w2-v1 下载 836 个镜像分片，校验 SHA-256 后在脚本旁生成 `image.tar.zst`。中断后重跑会复用完整分片。出现 `Verified:` 后，只传合并好的镜像文件。在 PowerShell 中把下面的账号和服务器地址替换成实际 SSH 登录目标：
+
+```powershell
+scp.exe .\image.tar.zst user@SERVER:~/
+```
+
+在 910C 的 Linux 终端导入。若四台共用存放镜像的目录，只需传一次，但每台都要执行加载。
+
+```bash
+set -o pipefail
+zstd -dc ~/image.tar.zst | sudo docker load
+```
+
 ## 从 GitHub 恢复完整部署包
 
 在 P1 或能访问 GitHub 的 Linux 登录节点执行。公开仓库和 Release 附件均可直接用 HTTPS 下载，无需 gh、GitHub 账号或上传权限。以下示例假定当前账户可写 /data。
