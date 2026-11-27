@@ -23,10 +23,10 @@ P2=192.0.2.12
 P3=192.0.2.13
 D=192.0.2.14
 IFACE=auto
-MODEL_DIR=/data/models/GLM-5.2-w4a8c8
+MODEL_DIR=/home/caofei/GLM-5.2-w4a8
 ```
 
-`IFACE=auto` 在各台按本机角色的 IP 查找网卡。把 `MODEL_DIR` 改成**宿主机上直接包含 config.json、tokenizer 和权重分片的目录**。四台都要能读到同一套完整权重。若第 4 台实际下载到另一块盘，只需在同一份配置中补一行 `MODEL_DIR_D=/mnt/models/GLM-5.2-w4a8c8`。其他角色同理。容器内均挂载为 `/models/glm-q`，API 模型名均为 `glm-5`。
+`IFACE=auto` 在各台按本机角色的 IP 查找网卡。把 `MODEL_DIR` 改成**宿主机上直接包含 config.json、tokenizer 和权重分片的目录**。本次四台的目录都是 `/home/caofei/GLM-5.2-w4a8`，共用这一行配置即可。已有完整权重时可跳过下载和同步步骤。若第 4 台实际下载到另一块盘，只需在同一份配置中补一行 `MODEL_DIR_D=/mnt/models/GLM-5.2-w4a8c8`。其他角色同理。容器内均挂载为 `/models/glm-q`，API 模型名均为 `glm-5`。
 
 四台使用相同的部署目录和同一份配置。若共享挂载，只编辑、解包一次。若为独立磁盘，先把恢复好的部署目录同步到各台的相同绝对路径，再同步权重。管理网与业务网分开时，在配置中按实际登录方式设置 `SSH_P2`、`SSH_P3`、`SSH_D`。下载、驱动及镜像准备见下文第 1–3 节。
 
@@ -108,7 +108,7 @@ done
 
 ```bash
 python3 -m pip install modelscope
-bash tools/download_model.sh /data/models/GLM-5.2-w4a8c8
+bash tools/download_model.sh /home/caofei/GLM-5.2-w4a8
 ```
 
 只通 GitHub 的节点可从本仓库取得脚本，但下载权重需要访问 [ModelScope 模型仓库](https://www.modelscope.cn/models/Eco-Tech/GLM-5.2-w4a8c8)。这些节点直接挂载已有权重，或使用下面的 rsync 步骤。
@@ -116,7 +116,7 @@ bash tools/download_model.sh /data/models/GLM-5.2-w4a8c8
 原权重保存在 node25 共享盘的 `/home/youxingye/youxingye_data/models/GLM-5.2-w4a8c8`。新节点可见同一个挂载时直接设置 MODEL_DIR。否则在能读到权重且能 SSH 到新节点的机器上执行，目标目录由当前账号持有：
 
 ```bash
-bash tools/sync_model.sh /home/youxingye/youxingye_data/models/GLM-5.2-w4a8c8 /data/models/GLM-5.2-w4a8c8 user@NEW_P1 user@NEW_P2 user@NEW_P3 user@NEW_D
+bash tools/sync_model.sh /home/youxingye/youxingye_data/models/GLM-5.2-w4a8c8 /home/caofei/GLM-5.2-w4a8 user@NEW_P1 user@NEW_P2 user@NEW_P3 user@NEW_D
 ```
 
 在四台设置一致的 `cluster.env`。将 P1、P2、P3、D 改成四个不同的**业务网 IPv4 地址**，IFACE 默认按本机业务地址自动选择网卡，MODEL_DIR 改为实际绝对路径。三台 P 的 Store 配额默认各 64 GiB。模型在容器内固定挂载到 `/models/glm-q`，方便沿用原来的 Store key 命名空间。
