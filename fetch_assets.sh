@@ -10,6 +10,16 @@ if [[ -z ${CURL_CA_BUNDLE:-} && -z ${SSL_CERT_FILE:-} && -z ${SSL_CERT_DIR:-} ]]
   fi
   if [[ -n $git_ca && -r $git_ca ]]; then export CURL_CA_BUNDLE="$git_ca"; fi
 fi
+if [[ -z ${https_proxy:-} && -z ${HTTPS_PROXY:-} && -z ${ALL_PROXY:-} && -z ${all_proxy:-} ]] && command -v git >/dev/null; then
+  git_proxy=$(git config --get-urlmatch http.proxy "$base" || true)
+  if [[ -n $git_proxy ]]; then export https_proxy="$git_proxy"; fi
+fi
+if [[ ${1:-} == --probe ]]; then
+  echo "Testing first image segment (HTTPS byte range 0-0)"
+  curl -q -fsSL --range 0-0 --max-filesize 1024 --connect-timeout 10 --max-time 40 \
+    -D - -o /dev/null "$base/image.seg-0000" | awk '/^HTTP\// {sub(/\r$/, ""); print; fflush()}'
+  exit
+fi
 tmp=$(mktemp -d .fetch-assets.XXXXXX)
 trap 'rm -rf -- "$tmp"' EXIT
 have_image=false

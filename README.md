@@ -65,6 +65,26 @@ CURL_CA_BUNDLE=/实际路径/cluster-ca-bundle.pem bash fetch_assets.sh
 
 也可以在已配好 CA 的登录节点上向共享盘下载。下载前用 `df -h .` 查看当前目录的可用空间。首次还原时镜像分片和合并文件同时存在，仅这两份就占约 13.1 GiB，此外还需为 W2 解包、运行库及后续 Docker 导入留空间。
 
+### git clone 成功，但 fetch_assets.sh 连接超时
+
+在 node07 或下载节点的已有仓库执行。探测请求只申请第一个分片的第一个字节，并打印 HTTP 状态行。脚本尝试使用 Git 为 GitHub 配置的可信 CA 和 HTTPS 代理，已有的代理环境变量优先。
+
+```bash
+git pull --ff-only https://github.com/yaleyoou/910C-3P1D-W2.git main
+bash fetch_assets.sh --probe
+```
+
+最后出现 `206 Partial Content` 时运行 `bash fetch_assets.sh`。若出现 302 后超时，先向管理员确认是否允许 GitHub Release 附件重定向的下载出口。若节点仅允许 Git 服务，请用集群批准的文件导入途径，将完整离线包和对应 .sha256 文件放到共享数据盘。在有足够空间的新目录解压，保留已配置的 cluster.env；在四台各自进入还原的目录加载镜像。
+
+```bash
+sha256sum -c 910C-3P1D-W2-offline.tar.sha256
+mkdir -p offline-deploy
+tar -xf 910C-3P1D-W2-offline.tar -C offline-deploy
+cd offline-deploy/910C-3P1D-W2
+bash check_assets.sh
+sudo bash node.sh load
+```
+
 ## 1. 准备四台主机
 
 每台需 Linux ARM64、可用的 910C 驱动和固件、8 张卡的 16 个可见 die，以及可用的 Docker Engine。容器提供 vLLM、vLLM-Ascend、Mooncake、CANN 用户态环境。精确软件栈是 vLLM 0.30.0+empty、vLLM-Ascend 0.30.1.dev22+g4ebfc1f4c、Mooncake 0.3.13，以及随包挂载的 MemFabric 1.3.1 4T 补丁。四台需要能通过原传输方式访问彼此的 NPU fabric；仅管理 IP 能 ping 通还不足以验证 SDMA/HCCS。D Store 大于 0 时，Store donor 和模型共用设备，核对设备共享设置。
