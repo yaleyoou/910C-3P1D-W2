@@ -30,6 +30,118 @@ MODEL_DIR=/home/caofei/GLM-5.2-w4a8
 
 四台使用相同的部署目录和同一份配置。若共享挂载，只编辑、解包一次。若为独立磁盘，先把恢复好的部署目录同步到各台的相同绝对路径，再同步权重。管理网与业务网分开时，在配置中按实际登录方式设置 `SSH_P2`、`SSH_P3`、`SSH_D`。下载、驱动及镜像准备见下文第 1–3 节。
 
+## Windows 手动下载 Release 全部文件后上传与服务器端还原
+
+如果已在 Windows 浏览器手动下载了 [w2-v1 Release](https://github.com/yaleyoou/910C-3P1D-W2/releases/tag/w2-v1) 的全部附件并放到本地 `images` 目录（共 **839** 个文件：`image.seg-0000`～`image.seg-0835` 共 836 个分片、`memfabric-complete.tar.gz`、`w2-data.tar.gz`，以及可忽略的 `910C-Windows-Downloader.zip`），可按下面两种方式二选一上传到服务器（以下示例假设 SSH 别名为 `910a3_27`，服务器仓库目录为 `/你的仓库路径/910C-3P1D-W2`，按实际情况替换）。
+
+### 方案 A（推荐）：先在 Windows 合并校验，再只 `scp` 3 个文件
+
+避免 `scp` 逐个传输 836 个小分片的开销，上传前即可发现缺失或损坏的分片，也能为服务器节省约 6.5 GiB 临时空间（Windows 当前盘需至少 7 GiB 空闲空间）。
+
+在 Windows PowerShell 进入 `images` 目录执行：
+
+```powershell
+cd C:\你的路径\images
+$ErrorActionPreference = 'Stop'
+$dir = (Get-Location).ProviderPath
+
+# 1. 检查 838 个必需文件是否齐全
+$missing = @(0..835 | ForEach-Object { 'image.seg-{0:D4}' -f $_ } | Where-Object { -not (Test-Path $_) })
+foreach ($f in @('memfabric-complete.tar.gz', 'w2-data.tar.gz')) {
+    if (-not (Test-Path $f)) { $missing += $f }
+}
+if ($missing.Count -gt 0) {
+    Write-Host "缺少 $($missing.Count) 个文件（前 20 个）：" -ForegroundColor Red
+    $missing | Select-Object -First 20
+    throw "请先补齐文件或去掉浏览器重复下载后缀再合并"
+}
+
+# 2. 按 0000 -> 0835 顺序合并为 image.tar.zst（约 6.53 GiB）
+$out = [IO.File]::Create((Join-Path $dir 'image.tar.zst'))
+try {
+    foreach ($i in 0..835) {
+        $f = [IO.File]::OpenRead((Join-Path $dir ('image.seg-{0:D4}' -f $i)))
+        try { $f.CopyTo($out) } finally { $f.Dispose() }
+    }
+} finally {
+    $out.Dispose()
+}
+
+# 3. 校验三个核心文件的 SHA-256
+$expected = @{
+    'image.tar.zst'             = '0e7cfc4416208ccb7b7c90cac31d0d0bc5d8e2dd224058c8b6d9c03d1f7351e4'
+    'memfabric-complete.tar.gz' = 'afcf64db37d5ec1e1c2edecc2ba9fa101b9ec73c673a30ecc25530bf07a1ed85'
+    'w2-data.tar.gz'            = '9d4293a9ca6d3a1570e25f42c69191503b0553589c6d866f1ea241b5d797e54b'
+}
+foreach ($name in $expected.Keys) {
+    $h = (Get-FileHash $name -Algorithm SHA256).Hash.ToLower()
+    if ($h -eq $expected[$name]) { Write-Host "OK   $name" -ForegroundColor Green }
+    else { Write-Host "FAIL $name (got $h)" -ForegroundColor Red }
+}
+```
+
+三项全部输出 `OK` 后，将 3 个文件上传到服务器仓库根目录：
+
+```powershell
+scp.exe .\image.tar.zst .\memfabric-complete.tar.gz .\w2-data.tar.gz 910a3_27:/你的仓库路径/910C-3P1D-W2/
+```
+
+上传完成后直接跳到下方「服务器端解包、校验与导入镜像」。
+
+### 方案 B：直接 `scp` 整个 `images` 目录到服务器后再合并
+
+适合 Windows 本地盘空间不足时使用。服务器目标盘需至少 15 GiB 空闲空间（836 个分片与合并后的 `image.tar.zst` 会短暂并存）。
+
+1. 在 Windows PowerShell 上传到与仓库同盘的临时目录：
+
+```powershell
+scp.exe -r C:\你的路径\images 910a3_27:/你的仓库路径/w2-images
+```
+
+2. 登录 `910a3_27`，离线校验 838 个文件并拼接镜像：
+
+```bash
+ssh 910a3_27
+
+REPO=/你的仓库路径/910C-3P1D-W2
+cd "$REPO"
+df -h .
+
+# 移入 838 个必需文件（忽略 910C-Windows-Downloader.zip）
+mv ../w2-images/image.seg-* ../w2-images/memfabric-complete.tar.gz ../w2-images/w2-data.tar.gz .
+
+# 纯离线校验全部 838 个文件（不联网）
+sha256sum -c release.sha256 | grep -v ': OK$' || echo "ALL 838 FILES OK"
+
+# 按清单顺序拼接为 image.tar.zst 并校验
+awk '$2 ~ /^image[.]seg-/ {print $2}' release.sha256 | xargs cat > image.tar.zst
+sha256sum -c assets.sha256
+
+# 校验通过后删除 836 个分片，释放约 6.5 GiB 空间
+rm -f image.seg-*
+```
+
+### 服务器端解包、校验与导入镜像
+
+方案 A 或方案 B 完成后，在 `910a3_27` 仓库根目录执行（需宿主机已安装 `zstd`）：
+
+```bash
+cd /你的仓库路径/910C-3P1D-W2
+
+# 1. 解压 W2 测试集与 MemFabric 4T 补丁运行库
+mkdir -p data
+tar -xzf w2-data.tar.gz -C data
+tar -xzf memfabric-complete.tar.gz
+
+# 2. 全量离线校验（7 个 MemFabric 库、镜像压缩包与解压 tar 的 SHA-256、985 条 W2 请求）
+bash check_assets.sh
+
+# 3. 导入 Docker 镜像（正常输出 sha256:b3c4ed45ab4433bda7a306fdaabdd33481d32df9fd41b54dc0c6066602c34fc6 arm64）
+sudo bash node.sh load
+```
+
+镜像导入完成后，按本页第 2 节编辑 `cluster.env` 并同步部署目录到其余三台 910C（若四台共享目录则跳过同步），在其余三台**各自执行一次** `sudo bash node.sh load`，随后按「首次启动和单请求验收」完成 `sudo bash node.sh check p1|p2|p3|d` 与试跑。
+
 ## Windows 一键下载镜像、MemFabric 和 W2
 
 用浏览器下载 [Windows 下载器 ZIP](https://github.com/yaleyoou/910C-3P1D-W2/releases/download/w2-v1/910C-Windows-Downloader.zip)，右键选择“全部解压”，放在至少有 14 GiB 可用空间的目录。在解压目录双击 `Download-W2.cmd`，同一目录只运行一个窗口。脚本使用 curl.exe、certutil.exe 和 Windows PowerShell。中断后在原目录双击即可继续。看到 READY 后，把 `910C-files` 里的三个文件传到服务器的仓库根目录。
