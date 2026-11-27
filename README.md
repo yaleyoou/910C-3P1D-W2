@@ -32,6 +32,22 @@ MODEL_DIR=/home/caofei/GLM-5.2-w4a8
 
 ## 从 GitHub 恢复完整部署包
 
+### curl 无法解析 github.com
+
+若安装时显示 `curl: (6) Could not resolve host: github.com`，请先在出错节点的同一个终端运行以下命令。若有单独的集群登录节点，也在那里执行一次，比较结果。
+
+```bash
+hostname
+getent ahosts github.com
+curl -ILsS --connect-timeout 5 --max-time 15 -o /dev/null -w 'GitHub HTTP %{http_code}\n' https://github.com/
+```
+
+- **登录节点能访问，P1 不能**：如果它们共享一块可写盘，在登录节点的共享目录克隆仓库并运行 `bash fetch_assets.sh`，下载并还原整个部署目录。P1、P2、P3、D 直接进入这个目录，各自执行 `sudo bash node.sh load`。只有下载机需要 gh。若下载机是 x86_64，请使用适合它的 gh。
+- **P1 返回 HTTP 200**：重新执行下方安装命令。若首页成功但安装包仍失败，查看 curl 错误中的具体主机名，下载 Release 时可能在重定向后失败。
+- **两处都无法解析或连接**：向管理员确认允许下载 GitHub Release 的节点、集群指定的 DNS 或 HTTPS 代理。浏览器可用 GitHub 时，也要确认运行 curl 的终端是否使用相同出口。
+
+### 在 ARM64 下载机上安装 gh
+
 如果 P1 提示 `bash: gh: command not found`，先运行 `uname -m`。显示 `aarch64` 时，在 **P1 的普通用户 shell** 从 GitHub 官方 Release 安装 Linux ARM64 版。此步骤只需在负责下载部署包的机器上执行。命令从 `gh` 开头，无需在前面加 `bash`。
 
 ```bash
