@@ -49,6 +49,22 @@ bash fetch_assets.sh
 curl -IL --connect-timeout 10 https://github.com/yaleyoou/910C-3P1D-W2/releases/download/w2-v1/memfabric-complete.tar.gz
 ```
 
+### git pull 成功，但下载第一个分片时报 curl (60)
+
+出现 `self signed certificate in certificate chain` 时，curl 无法用当前信任的 CA 验证所见证书链。先更新下载脚本并重试。新版会尝试使用 Git 为 GitHub 配置的 CA 文件，也支持手动指定集群管理员提供的可信 PEM 证书包。
+
+```bash
+git pull --ff-only https://github.com/yaleyoou/910C-3P1D-W2.git main && bash fetch_assets.sh
+```
+
+如果仍报 (60)，向集群管理员取得用于 GitHub HTTPS 出口的 CA bundle 文件或其本机路径，将下例的路径替换为实际路径后重跑。该设置只对这次运行生效，无需 sudo。
+
+```bash
+CURL_CA_BUNDLE=/实际路径/cluster-ca-bundle.pem bash fetch_assets.sh
+```
+
+也可以在已配好 CA 的登录节点上向共享盘下载。下载前用 `df -h .` 查看当前目录的可用空间。首次还原时镜像分片和合并文件同时存在，仅这两份就占约 13.1 GiB，此外还需为 W2 解包、运行库及后续 Docker 导入留空间。
+
 ## 1. 准备四台主机
 
 每台需 Linux ARM64、可用的 910C 驱动和固件、8 张卡的 16 个可见 die，以及可用的 Docker Engine。容器提供 vLLM、vLLM-Ascend、Mooncake、CANN 用户态环境。精确软件栈是 vLLM 0.30.0+empty、vLLM-Ascend 0.30.1.dev22+g4ebfc1f4c、Mooncake 0.3.13，以及随包挂载的 MemFabric 1.3.1 4T 补丁。四台需要能通过原传输方式访问彼此的 NPU fabric；仅管理 IP 能 ping 通还不足以验证 SDMA/HCCS。D Store 大于 0 时，Store donor 和模型共用设备，核对设备共享设置。

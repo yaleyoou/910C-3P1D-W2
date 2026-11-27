@@ -2,6 +2,14 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 base=https://github.com/yaleyoou/910C-3P1D-W2/releases/download/w2-v1
+# Git may already know the cluster's CA bundle used for HTTPS cloning.
+if [[ -z ${CURL_CA_BUNDLE:-} && -z ${SSL_CERT_FILE:-} && -z ${SSL_CERT_DIR:-} ]]; then
+  git_ca=${GIT_SSL_CAINFO:-}
+  if [[ -z $git_ca ]] && command -v git >/dev/null; then
+    git_ca=$(git config --path --get-urlmatch http.sslCAInfo "$base" || true)
+  fi
+  if [[ -n $git_ca && -r $git_ca ]]; then export CURL_CA_BUNDLE="$git_ca"; fi
+fi
 tmp=$(mktemp -d .fetch-assets.XXXXXX)
 trap 'rm -rf -- "$tmp"' EXIT
 have_image=false
