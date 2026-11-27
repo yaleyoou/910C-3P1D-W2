@@ -32,6 +32,24 @@ MODEL_DIR=/data/models/GLM-5.2-w4a8c8
 
 ## 从 GitHub 恢复完整部署包
 
+如果 P1 提示 `bash: gh: command not found`，先运行 `uname -m`。显示 `aarch64` 时，在 **P1 的普通用户 shell** 从 GitHub 官方 Release 安装 Linux ARM64 版。此步骤只需在负责下载部署包的机器上执行。命令从 `gh` 开头，无需在前面加 `bash`。
+
+```bash
+(
+  set -e
+  cd "$(mktemp -d)"
+  pkg=gh_2.83.2_linux_arm64
+  curl -fL --retry 3 -o "$pkg.tar.gz" "https://github.com/cli/cli/releases/download/v2.83.2/$pkg.tar.gz"
+  echo "b1a0c0a0fcf18524e36996caddc92a062355ed014defc836203fe20fba75a38e  $pkg.tar.gz" | sha256sum -c -
+  tar -xzf "$pkg.tar.gz" "$pkg/bin/gh"
+  install -Dm755 "$pkg/bin/gh" "$HOME/.local/bin/gh"
+)
+export PATH="$HOME/.local/bin:$PATH"
+gh --version
+```
+
+如果重新登录后又找不到 gh，将上面的 `export PATH=...` 加入 `~/.bashrc`。无图形界面的 P1 也可使用 `gh auth login --hostname github.com --git-protocol https --web`，按终端提示在自己电脑的浏览器完成设备授权。已能读取完整离线包的其他节点可直接加载镜像。
+
 在有 GitHub CLI、Git 和 zstd 的 Linux 主机上执行以下命令。示例假定当前账户可写 /data。按 main 分支取当前教程，离线附件取自 w2-v1。已有 GitHub CLI 登录时可跳过第一行。脚本从 Release 下载原镜像的 836 个分片、985 条 W2 请求和 MemFabric 运行库，校验 SHA-256 并恢复目录。权重按第 2 节从共享盘分发。
 
 ```bash
