@@ -30,6 +30,16 @@ MODEL_DIR=/home/caofei/GLM-5.2-w4a8
 
 四台使用相同的部署目录和同一份配置。若共享挂载，只编辑、解包一次。若为独立磁盘，先把恢复好的部署目录同步到各台的相同绝对路径，再同步权重。管理网与业务网分开时，在配置中按实际登录方式设置 `SSH_P2`、`SSH_P3`、`SSH_D`。下载、驱动及镜像准备见下文第 1–3 节。
 
+## Windows 一键下载镜像、MemFabric 和 W2
+
+用浏览器下载 [Windows 下载器 ZIP](https://github.com/yaleyoou/910C-3P1D-W2/releases/download/w2-v1/910C-Windows-Downloader.zip)，右键选择“全部解压”，放在至少有 14 GiB 可用空间的目录。在解压目录双击 `Download-W2.cmd`，同一目录只运行一个窗口。脚本使用 curl.exe、certutil.exe 和 Windows PowerShell。中断后在原目录双击即可继续。看到 READY 后，把 `910C-files` 里的三个文件传到服务器的仓库根目录。
+
+| 文件 | 用途 |
+|---|---|
+| image.tar.zst | Docker 镜像 |
+| memfabric-complete.tar.gz | 原实验 MemFabric 运行库和补丁 |
+| w2-data.tar.gz | 985 条冻结请求及依赖清单 |
+
 ## Windows 只下载 Docker 镜像
 
 在 Windows 浏览器中打开 [download-image.ps1](download-image.ps1)，在文件右上角点 **Download raw file**，存到空间至少 14 GiB 的目录。打开该目录的 PowerShell，执行：
