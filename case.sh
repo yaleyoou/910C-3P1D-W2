@@ -6,6 +6,7 @@
 #   bash case.sh F1,F5,F2,F3,F4,EC1,ES1,EJ1 r1
 #   bash case.sh all r1
 set -euo pipefail
+[[ -d /home/miniconda3/bin ]] && export PATH="/home/miniconda3/bin:$PATH"
 cd "$(dirname "$0")"; base=$PWD
 source cluster.env
 groups_arg=${1:?F1 | F1,F5,... | all}; trial=${2:?r1}

@@ -3,6 +3,7 @@
 # Prompts once for the shared sudo password, syncs repo + image to P2/P3/D, loads Docker images,
 # enables NPU device-share on D, and runs preflight checks across all 4 nodes.
 set -euo pipefail
+[[ -d /home/miniconda3/bin ]] && export PATH="/home/miniconda3/bin:$PATH"
 cd "$(dirname "$0")"; base=$PWD
 [[ $base =~ ^/[A-Za-z0-9_./-]+$ ]] || { echo "Path must contain only [A-Za-z0-9_./-]: $base" >&2; exit 1; }
 source cluster.env
@@ -86,8 +87,13 @@ for i in 1 2 3; do
   else
     echo "  ${roles[$i]} (${hosts[$i]}): syncing files to $base ..."
     on "$i" mkdir -p "$base"
-    rsync -a --info=progress2 --exclude='.git/' --exclude='runs/' --exclude='image.seg-*' --exclude='.fs-probe.*' \
-      "$base/" "${hosts[$i]}:$base/"
+    if command -v rsync >/dev/null 2>&1 && on "$i" sh -c 'command -v rsync >/dev/null 2>&1'; then
+      rsync -a --info=progress2 --exclude='.git/' --exclude='runs/' --exclude='image.seg-*' --exclude='.fs-probe.*' \
+        "$base/" "${hosts[$i]}:$base/"
+    else
+      tar -cf - --exclude='.git' --exclude='./runs' --exclude='image.seg-*' --exclude='.fs-probe.*' -C "$base" . \
+        | ssh -o BatchMode=yes -o ConnectTimeout=8 "${hosts[$i]}" "mkdir -p $(printf '%q' "$base") && tar -xf - -C $(printf '%q' "$base")"
+    fi
   fi
 done
 rm -f -- "$sentinel"

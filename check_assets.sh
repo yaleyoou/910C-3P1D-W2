@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+[[ -d /home/miniconda3/bin ]] && export PATH="/home/miniconda3/bin:$PATH"
 cd "$(dirname "$0")"
 python3 tools/verify_runtime.py
 sha256sum -c assets.sha256
