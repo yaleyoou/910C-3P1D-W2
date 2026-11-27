@@ -377,9 +377,9 @@ curl --noproxy '*' -fsS "http://$(. ./cluster.env; echo "$P1"):50089/metrics" | 
 
 每轮结果目录由组名、trial、阶段、角色组成。失败时保留容器与日志，查看相应节点的 `logs/p.log`、`logs/d.log`、`logs/store-d.log` 或 proxy 日志。检查 D 是否实际规划到了目标 sparse 容量、四台设备健康、不同 P 的传输会话能否正确连到 D。修正后各有容器的节点运行 `sudo bash node.sh down`，重试用新 trial，如 r2。停止命令只操作标记为本实验的容器。
 
-## 5. 配额表和扩容对照
+## 5. 配额表、自定义配额与扩容对照
 
-`cases.tsv` 是唯一的组别配额表；总预算 = 3 × 64 + D Store + D sparse，单位 GiB。
+`cases.tsv` 定义各组的配额；默认总预算 = `3 × P_STORE + D_store_GiB + D_sparse_GiB`（单位 GiB）。
 
 | 组 | D Store | D sparse | 总预算 | 对照目的 |
 |---|---:|---:|---:|---|
@@ -396,12 +396,31 @@ curl --noproxy '*' -fsS "http://$(. ./cluster.env; echo "$P1"):50089/metrics" | 
 for g in F5 F2 F3 F4 EC1 ES1 EJ1; do bash case.sh "$g" r1 || break; done
 ```
 
-## 6. 取结果
+### 如何自定义 P Store、D Store 和 D Sparse KV Pool
 
-每组的三 P 分项保存在 `blocks/p1/per-P.json`。每组输出 `runs/<组>/<trial>/blocks/p1/result.csv`。P1 宿主机将多组汇总：
+三项配额均支持按需修改（**修改 `cluster.env` 或 `cases.tsv` 后，若四台磁盘独立，需同步到其余三台以通过一致性校验**）：
+
+- **P Store（每台 P 的 Mooncake Store，单位 GiB）**：
+  - 全局修改：编辑 `cluster.env` 中的 `P_STORE=64`（三台 P 合计 `3 × P_STORE` GiB；TP16 下平分给 16 个 worker，建议填 16 的整数倍，如 `16 / 32 / 48 / 64 / 128`）。
+  - 单组覆盖：也可在 `cases.tsv` 某一行末尾追加可选第 4 列 `P_store_GiB`（不填则使用 `cluster.env` 的 `P_STORE`）。
+- **D Store（D 节点 Mooncake Store，单位 GiB）**：
+  - 在 `cases.tsv` 第 2 列设置（`0` 表示不启动 D Store donor；`> 0` 时建议取 16 的整数倍，且 D 节点需按第 1 节开启 16 个 die 的 `device-share`）。
+- **D Sparse KV Pool（D 节点 `dram_size_per_dp_GB`，单位 GiB）**：
+  - 在 `cases.tsv` 第 3 列设置。受 4 TiB MemFabric 补丁在 TP16 下的虚拟地址预留上限约束，**有效上限为 `256` GiB**（`> 256` 会被 `node.sh` 和 MemFabric 拦截）；考虑 W2 长上下文单请求块需求，建议在 **`64`～`256` GiB** 范围内设置，同时确保 `D Store + D sparse` 不超过 D 主机可用物理内存。
+  - 示例：在 `cases.tsv` 新增一行 `CUSTOM1	32	224	80`（表示 `D Store=32 GiB`、`D sparse=224 GiB`、每台 `P Store=80 GiB`），同步四台后直接运行 `bash case.sh CUSTOM1 r1`。
+
+## 6. 取结果（CSV 与 17 列原版 Markdown 表）
+
+每组跑完自动保存：
+- 单组三 P 分项：`runs/<组>/<trial>/blocks/p1/per-P.json`
+- 单组结果：`runs/<组>/<trial>/blocks/p1/result.csv` 与 `result.md`
+- 跨组自动汇总：`case.sh` 每跑完一组都会自动刷新 `runs/summary_<trial>.csv` 和 **`runs/summary_<trial>.md`**（与 `evidence/旧1P1D结果.md` 完全一致的 17 列 Markdown 表格）。
+
+也可在 P1 宿主机手动指定任意已完成组汇总导出：
 
 ```bash
 python3 tools/result.py runs/{F1,F5,F2,F3,F4,EC1,ES1,EJ1}/r1 > summary.csv
+python3 tools/result.py --markdown runs/{F1,F5,F2,F3,F4,EC1,ES1,EJ1}/r1 > summary.md
 ```
 
 | 字段 | 统计口径 |
@@ -409,10 +428,11 @@ python3 tools/result.py runs/{F1,F5,F2,F3,F4,EC1,ES1,EJ1}/r1 > summary.csv
 | 输出吞吐；TTFT 均值 / P95、平均 TPOT | 首发至最后完成的输出 tokens/s；按请求计算 TTFT 和首 token 后的 TPOT；沿用原 finite client 的分位数算法 |
 | P 平均排队数；D 平均容量等待数 | 全部正式时间内三台 P 的 waiting 之和的时间均值；D 只计 reason=capacity |
 | P 合计前缀命中率 | 三台的本地命中和外部命中 token 增量求和，除以三台本地查询 token 增量之和 |
-| P / D Store 平均占用 | 逐 segment 按注册 IP 归属，积分对象分配字节；P 列为三台合计，D Store=0 时为零 |
-| D 平均活跃主 KV | D 上从 ready 到 finish 的活跃物理 slot 只计一次，以 78 层 × (512+64) × 2 字节/token 折算。步间生成 token 数按原算法插值 |
-| 平均重复量 | D 上每个活跃物理块的内容哈希在同一时刻的全局 Store 主 KV key 集合中出现时，累积对应主 KV 字节并做时间平均 |
-| 活跃主 KV 重复率 | 重复主 KV 的字节·秒 ÷ 全部活跃主 KV 的字节·秒。5 秒快照与输出插值构成估计误差；输出中保留上下界与隔点采样结果 |
+| P / D Store 平均对象占用 | 逐 segment 按注册 IP 归属，积分对象分配字节；P 列为三台合计，D Store=0 时为零 |
+| D 逻辑 KV 平均使用率 | 正式回放窗口内 D 节点 `vllm:kv_cache_usage_perc` 的时间均值（百分比） |
+| 平均活跃主 KV | D 上从 ready 到 finish 的活跃物理 slot 只计一次，以 78 层 × (512+64) × 2 字节/token 折算。步间生成 token 数按原算法插值 |
+| 平均重复量；全局重复比例 | D 上每个活跃物理块的内容哈希在同一时刻的全局 Store 主 KV key 集合中出现时，累积对应主 KV 字节并做时间平均；除以全部活跃主 KV 的字节·秒得全局重复比例 |
+| 曾重复 KV token 位置数；全 workload 曾重复 KV 占比 | 按请求累计全部主 KV token 位置（W2 共 82,229,306）；每个完整 128-token 块在该请求解码期间任一快照匹配即计一次（共享前缀按请求分别计），除以全 workload 总位置数得占比 |
 
 数据完整性以 `request-audit.json`、`overlap.json`、两份 `finite-client/summary.json` 和 per-P 计数为准。旧报告作为比较放在 `evidence/旧1P1D结果.md`。全部四节点指标需由新机器产生。
 

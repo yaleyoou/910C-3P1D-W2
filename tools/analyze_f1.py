@@ -58,6 +58,9 @@ def sample(t,keys):
                 hi_match[slot]=max(hi_match.get(slot,0),hi)
     return [sum(x.values()) for x in (lower,upper,middle,lo_match,hi_match,mid_match,unique)]
 
+workload_total_tokens=sum(final for _,_,_,final,_,_ in requests)
+ever_matched=[set() for _ in requests]
+seen_requests=set()
 keys=set(); snapshots=[]; errors=0; durations=[]
 try:
     with gzip.open(root/'store.jsonl.gz','rt') as stream:
@@ -69,12 +72,20 @@ try:
                     ns,_,digest=k.rpartition('@')
                     if ns==namespace: method(digest)
             t=(r['begin_ns']+r['end_ns'])//2
+            for idx,(ready,finish,initial,final,_,hashes) in enumerate(requests):
+                if ready<=t<finish:
+                    seen_requests.add(idx)
+                    available=min(final,round(initial+(final-initial)*(t-ready)/(finish-ready)))
+                    for j,digest in enumerate(hashes[:available//block]):
+                        if digest in keys: ever_matched[idx].add(j)
             if t < start-10e9: continue
             snapshots.append((t,sample(t,keys)))
             durations.append((r['end_ns']-r['begin_ns'])/1e9)
             if t>end+10e9: break
 except EOFError:
     pass
+ever_overlapped_tokens=sum(len(m)*block for m in ever_matched)
+workload_overlap_pct=(100*ever_overlapped_tokens/workload_total_tokens) if workload_total_tokens else 0.0
 
 def integrate(rows):
     total=[0.0]*7; coverage=0
@@ -88,4 +99,4 @@ def integrate(rows):
     l,u,m,lm,um,mm,unique=total
     if not m: return dict(covered_s=coverage)
     return dict(covered_s=coverage,ratio_pct=100*mm/m,conditional_ratio_bounds_pct=[100*lm/u,min(100,100*um/l)],mean_overlap_GiB=mm/coverage*bytes_per_token/2**30,mean_unique_overlap_GiB=unique/coverage*bytes_per_token/2**30,mean_overlap_bounds_GiB=[lm/coverage*bytes_per_token/2**30,um/coverage*bytes_per_token/2**30],mean_active_GiB=m/coverage*bytes_per_token/2**30)
-print(json.dumps(dict(complete=complete,sent=len(sends),done=len(done),d_ids=len(by_id),seconds=(end-start)/1e9,snapshot_errors=errors,samples=len(snapshots),all_snapshots=integrate(snapshots),every_other_snapshot=integrate(snapshots[::2]),max_snapshot_duration_s=max(durations,default=0)),indent=2))
+print(json.dumps(dict(complete=complete,sent=len(sends),done=len(done),d_ids=len(by_id),seconds=(end-start)/1e9,snapshot_errors=errors,samples=len(snapshots),workload_total_tokens=workload_total_tokens,ever_overlapped_tokens=ever_overlapped_tokens,workload_overlap_pct=workload_overlap_pct,seen_requests=len(seen_requests),all_snapshots=integrate(snapshots),every_other_snapshot=integrate(snapshots[::2]),max_snapshot_duration_s=max(durations,default=0)),indent=2))

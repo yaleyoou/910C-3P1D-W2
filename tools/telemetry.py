@@ -41,7 +41,10 @@ def scrape(role):
         gauges['allocated']=required(data,'master_allocated_bytes')/2**30
         return gauges
     if role=='D':
-        return {'capacity':required(data,'vllm:num_requests_waiting_by_reason','reason="capacity"')}
+        kv=values(data,'vllm:kv_cache_usage_perc') or values(data,'vllm:gpu_cache_usage_perc')
+        if not kv: raise ValueError('missing vllm:kv_cache_usage_perc on D')
+        return {'capacity':required(data,'vllm:num_requests_waiting_by_reason','reason="capacity"'),
+                'kv_usage':sum(kv)/len(kv)}
     return {key:required(data,'vllm:'+name) for key,name in {
         'waiting':'num_requests_waiting','query':'prefix_cache_queries_total',
         'local_hit':'prefix_cache_hits_total','ext_hit':'external_prefix_cache_hits_total'}.items()}
@@ -56,6 +59,10 @@ if __name__=='__main__':
     target=Path(sys.argv[1])
     with target.open('x',buffering=1) as out:
         while True:
-            print(json.dumps(sample()),file=out)
-            time.sleep(2)
+            t0=time.time()
+            try:
+                print(json.dumps(sample()),file=out)
+            except Exception as exc:
+                print(f'telemetry sample warning: {exc}',file=sys.stderr,flush=True)
+            time.sleep(max(0.0,2.0-(time.time()-t0)))
 

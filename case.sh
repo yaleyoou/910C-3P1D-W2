@@ -5,13 +5,22 @@ cd "$(dirname "$0")"; base=$PWD
 source cluster.env
 group=${1:?F1}; trial=${2:?r1}
 [[ $group =~ ^[A-Za-z0-9_-]+$ && $trial =~ ^[A-Za-z0-9_-]+$ && $base =~ ^/[A-Za-z0-9_./-]+$ ]]
-awk -v g="$group" '$1==g{found=1}END{exit !found}' cases.tsv
+awk -v g="$group" '$1 !~ /^#/ && $1 != "case" && $1==g{found=1}END{exit !found}' cases.tsv
 roles=(p1 p2 p3 d)
 hosts=(localhost "${SSH_P2:-$P2}" "${SSH_P3:-$P3}" "${SSH_D:-$D}")
 name=glm52-3p1d
+as_root() { if [[ $EUID -eq 0 ]]; then "$@"; else sudo -n "$@"; fi; }
 on() {
   local i=$1; shift
   if [[ $i == 0 ]]; then "$@"; else ssh -o BatchMode=yes -o ConnectTimeout=8 "${hosts[$i]}" "$(printf '%q ' "$@")"; fi
+}
+on_root() {
+  local i=$1; shift
+  if [[ $i == 0 ]]; then
+    as_root "$@"
+  else
+    ssh -o BatchMode=yes -o ConnectTimeout=8 "${hosts[$i]}" "if [ \"\$(id -u)\" = 0 ]; then $(printf '%q ' "$@"); else sudo -n $(printf '%q ' "$@"); fi"
+  fi
 }
 ready() {
   local url=$1
@@ -21,37 +30,51 @@ ready() {
   done
   echo "Readiness timed out: $url" >&2; return 1
 }
-dlog() { on 3 sudo -n docker exec "$name" cat /run-data/logs/d-blocks.jsonl | sudo -n tee "$1" >/dev/null; }
+dlog() { on_root 3 docker exec "$name" cat /run-data/logs/d-blocks.jsonl | as_root tee "$1" >/dev/null; }
 for i in 0 1 2 3; do
   on "$i" test -s "$base/node.sh"
   on "$i" test -s "$base/cluster.env"
   local_hash=$(sha256sum cluster.env cases.tsv | cut -d' ' -f1)
   host_hash=$(on "$i" sha256sum "$base/cluster.env" "$base/cases.tsv" | cut -d' ' -f1)
   test "$local_hash" = "$host_hash" || { echo "cluster.env or cases.tsv differs on ${roles[$i]}"; exit 1; }
-  on "$i" sudo -n bash "$base/node.sh" check "${roles[$i]}"
-  if on "$i" sudo -n docker inspect "$name" >/dev/null 2>&1; then echo "Container already exists on ${roles[$i]}";exit 1;fi
+  on_root "$i" bash "$base/node.sh" check "${roles[$i]}" "$group"
+  if on_root "$i" docker inspect "$name" >/dev/null 2>&1; then echo "Container already exists on ${roles[$i]}";exit 1;fi
 done
 python3 tools/verify_w2.py data/checkpoints/W2/frozen
 for phase in cal perf blocks; do
   pids=()
-  for i in 0 1 2 3; do on "$i" sudo -n bash "$base/node.sh" up "${roles[$i]}" "$group" "$phase" "$trial" & pids+=("$!"); done
+  for i in 0 1 2 3; do on_root "$i" bash "$base/node.sh" up "${roles[$i]}" "$group" "$phase" "$trial" & pids+=("$!"); done
   status=0; for pid in "${pids[@]}"; do wait "$pid" || status=1; done; test "$status" = 0
   for addr in "$P1:8100" "$P2:8100" "$P3:8100" "$D:8200"; do ready "http://$addr/health"; done
   ready "http://$P1:8300/healthcheck"
   out="$base/runs/$group/$trial/$phase/p1"
   if [[ $phase == blocks ]]; then
-    python3 tools/clock_check.py "${hosts[3]}" /dev/stdout | sudo -n tee "$out/clock-before.json" >/dev/null
+    python3 tools/clock_check.py "${hosts[3]}" /dev/stdout | as_root tee "$out/clock-before.json" >/dev/null
   fi
-  sudo -n docker exec "$name" bash /deploy/bench.sh
+  as_root docker exec "$name" bash /deploy/bench.sh
   if [[ $phase != perf ]]; then
     dlog "$out/logs/d-blocks.jsonl"
   fi
-  if [[ $phase == cal ]]; then sudo -n docker exec "$name" python3 /deploy/tools/check_probe.py /run-data;fi
+  if [[ $phase == cal ]]; then as_root docker exec "$name" python3 /deploy/tools/check_probe.py /run-data;fi
   if [[ $phase == blocks ]]; then
-    python3 tools/clock_check.py "${hosts[3]}" /dev/stdout | sudo -n tee "$out/clock-after.json" >/dev/null
-    sudo -n docker exec "$name" bash /deploy/finish.sh
+    python3 tools/clock_check.py "${hosts[3]}" /dev/stdout | as_root tee "$out/clock-after.json" >/dev/null
+    as_root docker exec "$name" bash /deploy/finish.sh
   fi
-  for i in 1 2 3 0; do on "$i" sudo -n bash "$base/node.sh" down; done
+  for i in 1 2 3 0; do on_root "$i" bash "$base/node.sh" down; done
 done
-echo "Result: $base/runs/$group/$trial/blocks/p1/result.csv"
+done_runs=()
+seen=" "
+for g in F1 F5 F2 F3 F4 EC1 ES1 EJ1 $(awk '$1 !~ /^#/ && $1 != "case" {print $1}' cases.tsv); do
+  if [[ $seen != *" $g "* && -s "$base/runs/$g/$trial/blocks/p1/result.csv" ]]; then
+    done_runs+=("$base/runs/$g/$trial")
+    seen+="$g "
+  fi
+done
+if ((${#done_runs[@]} > 0)); then
+  python3 tools/result.py "${done_runs[@]}" | as_root tee "$base/runs/summary_${trial}.csv" >/dev/null
+  python3 tools/result.py --markdown "${done_runs[@]}" | as_root tee "$base/runs/summary_${trial}.md" >/dev/null
+fi
+echo "Result CSV: $base/runs/$group/$trial/blocks/p1/result.csv"
+echo "Result MD:  $base/runs/$group/$trial/blocks/p1/result.md"
+echo "Summary MD: $base/runs/summary_${trial}.md"
 

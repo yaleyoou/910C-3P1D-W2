@@ -48,17 +48,54 @@ def summarize(run, details=None):
       'D 平均容量等待数':avg(lambda x:x['D']['capacity']),'P 合计前缀命中率 %':100*h/q,
       'P Store 平均占用 GiB':sum(v['store_GiB'] for v in per_p.values()),
       'D Store 平均占用 GiB':avg(lambda x:x['master']['D_segment_allocated_bytes']),
-      'D 平均活跃主 KV GiB':o['mean_active_GiB'],'平均重复量 GiB':o['mean_overlap_GiB'],'活跃主 KV 重复率 %':o['ratio_pct']}
+      'D 逻辑 KV 平均使用率 %':100*avg(lambda x:x['D']['kv_usage']),
+      'D 平均活跃主 KV GiB':o['mean_active_GiB'],'平均重复量 GiB':o['mean_overlap_GiB'],'活跃主 KV 重复率 %':o['ratio_pct'],
+      '曾重复 KV token 位置数':ov['ever_overlapped_tokens'],
+      '全 workload 曾重复 KV 占比 %':ov['workload_overlap_pct']}
     if details is not None:
         details.write_text(json.dumps(per_p,indent=2))
     return result
+def format_markdown(results):
+    headers=['组别','D Store / sparse 配额（GiB）','总预算 GiB','输出 tok/s','TTFT 均值 / P95（s）','平均 TPOT（ms）',
+             'P 平均排队数','D 平均容量等待数','P 合计前缀命中率','P Store 平均对象占用（GiB）','D Store 平均对象占用（GiB）',
+             'D 逻辑 KV 平均使用率','平均活跃主 KV（GiB）','平均重复量（GiB）','全局重复比例',
+             '曾重复 KV token 位置数','全 workload 曾重复 KV 占比']
+    lines=['# W2 配额、性能、占用与主 KV 重复情况','',
+           '| '+' | '.join(headers)+' |',
+           '| --- | '+' | '.join(['---:']*(len(headers)-1))+' |']
+    for r in results:
+        cells=[
+            str(r['组别']),
+            str(r['D Store / sparse（GiB）']),
+            str(r['总预算 GiB']),
+            f"{r['输出 tok/s']:.2f}",
+            f"{r['TTFT 均值 s']:.2f} / {r['TTFT P95 s']:.2f}",
+            f"{r['平均 TPOT ms']:.2f}",
+            f"{r['P 平均排队数（三台合计）']:.2f}",
+            f"{r['D 平均容量等待数']:.2f}",
+            f"{r['P 合计前缀命中率 %']:.2f}%",
+            f"{r['P Store 平均占用 GiB']:.1f}",
+            f"{r['D Store 平均占用 GiB']:.1f}",
+            f"{r['D 逻辑 KV 平均使用率 %']:.1f}%",
+            f"{r['D 平均活跃主 KV GiB']:.2f}",
+            f"{r['平均重复量 GiB']:.2f}",
+            f"{r['活跃主 KV 重复率 %']:.2f}%",
+            f"{r['曾重复 KV token 位置数']:,}",
+            f"{r['全 workload 曾重复 KV 占比 %']:.2f}%",
+        ]
+        lines.append('| '+' | '.join(cells)+' |')
+    return '\n'.join(lines)+'\n'
 if __name__=='__main__':
     parser=argparse.ArgumentParser()
     parser.add_argument('runs',type=Path,nargs='+')
     parser.add_argument('--details',type=Path)
+    parser.add_argument('--markdown',action='store_true')
     args=parser.parse_args()
     if args.details and len(args.runs)!=1: parser.error('--details takes one run')
     results=[summarize(x,args.details) for x in args.runs]
-    out=csv.DictWriter(sys.stdout,results[0].keys());out.writeheader()
-    out.writerows([{k:round(v,3) if isinstance(v,float) else v for k,v in r.items()} for r in results])
+    if args.markdown:
+        sys.stdout.write(format_markdown(results))
+    else:
+        out=csv.DictWriter(sys.stdout,results[0].keys());out.writeheader()
+        out.writerows([{k:round(v,3) if isinstance(v,float) else v for k,v in r.items()} for r in results])
 

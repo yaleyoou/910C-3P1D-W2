@@ -48,12 +48,23 @@ mounts=()
 for path in /usr/local/bin/npu-smi /etc/hccn.conf /etc/ascend_install.info /usr/local/Ascend/driver /usr/local/Ascend/firmware /usr/local/dcmi; do
   [[ -e $path ]] || { echo "$ROLE: missing host mount $path" >&2; exit 1; }; mounts+=(-v "$path:$path:ro")
 done
+if [[ -n ${3:-} ]]; then
+  read -r D_STORE SPARSE CASE_P_STORE < <(awk -v g="$3" '$1 !~ /^#/ && $1 != "case" && $1==g{print $2,$3,$4; exit}' cases.tsv)
+  [[ -n ${D_STORE:-} && -n ${SPARSE:-} ]] || { echo "Unknown case '$3' in cases.tsv" >&2; exit 1; }
+  if [[ -n ${CASE_P_STORE:-} ]]; then P_STORE=$CASE_P_STORE; fi
+  ((SPARSE > 0 && SPARSE <= 256)) || { echo "$ROLE: D_sparse_GiB=$SPARSE must be in 1..256 (TP16 4 TiB MemFabric limit)" >&2; exit 1; }
+  if [[ $ROLE == d ]] && ((D_STORE > 0)); then
+    if /usr/local/bin/npu-smi info -t device-share -i 0 -c 0 2>/dev/null | grep -qi 'false'; then
+      echo "d: NPU device-share is disabled (required when D_STORE=$D_STORE > 0); see README section 1" >&2
+      exit 1
+    fi
+  fi
+fi
 echo "$ROLE: $NODE_IP on $IFACE, $MODEL_DIR -> /models/glm-q"
 [[ $action != check ]] || exit 0
 CASE=${3:?F1}; PHASE=${4:?cal|perf|blocks}; TRIAL=${5:?r1}
 case $PHASE in cal|perf|blocks) ;; *) exit 2 ;; esac
 [[ $TRIAL =~ ^[A-Za-z0-9_-]+$ ]]
-read -r D_STORE SPARSE < <(awk -v g="$CASE" '$1==g{print $2,$3}' cases.tsv)
 output="$PWD/runs/$CASE/$TRIAL/$PHASE/$ROLE"
 mkdir -p "$(dirname "$output")"; mkdir "$output"; mkdir "$output/logs"
 cp cluster.env cases.tsv "$output/"

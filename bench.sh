@@ -9,6 +9,30 @@ for endpoint in "$P1:8100" "$P2:8100" "$P3:8100" "$D:8200"; do
   curl --noproxy '*' -fsS "http://$endpoint/health" -o /dev/null
 done
 curl --noproxy '*' -fsS "http://$P1:8300/healthcheck" -o /dev/null
+python3 - <<'PY'
+import os, sys, time
+sys.path.insert(0, '/deploy/tools')
+from telemetry import scrape
+deadline = time.time() + 300
+last_err = None
+while time.time() < deadline:
+    try:
+        m = scrape('master')
+        ok = True
+        for role in ('P1', 'P2', 'P3', 'D'):
+            exp = int(os.environ['D_STORE' if role == 'D' else 'P_STORE'])
+            got = m[role + '_segment_total_capacity_bytes']
+            if abs(got - exp) >= 1e-6:
+                ok = False
+                last_err = f"{role}: registered {got:.3f} GiB != expected {exp} GiB"
+                break
+        if ok:
+            sys.exit(0)
+    except Exception as exc:
+        last_err = str(exc)
+    time.sleep(3)
+sys.exit(f"Timed out waiting for Mooncake Store segments to register: {last_err}")
+PY
 python3 -c 'import os,json;open("/run-data/params.json","w").write(json.dumps({"case":os.environ["CASE"],"ps":int(os.environ["P_STORE"]),"ds":int(os.environ["D_STORE"]),"sparse":int(os.environ["SPARSE"]),"hosts":[os.environ[k] for k in ["P1","P2","P3","D"]]}))'
 if [[ $PHASE == cal ]]; then
   pids=()
