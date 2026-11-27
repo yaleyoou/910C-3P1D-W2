@@ -3,6 +3,7 @@ set -euo pipefail
 [[ -d /home/miniconda3/bin ]] && export PATH="/home/miniconda3/bin:$PATH"
 cd "$(dirname "$0")"
 source cluster.env
+[[ -z ${DOCKER_HOST:-} ]] || export DOCKER_HOST
 action=${1:?load | check | up | down}
 NAME=glm52-3p1d
 if [[ $action == load ]]; then

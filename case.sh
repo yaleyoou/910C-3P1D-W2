@@ -32,6 +32,8 @@ done
 roles=(p1 p2 p3 d)
 hosts=(localhost "${SSH_P2:-$P2}" "${SSH_P3:-$P3}" "${SSH_D:-$D}")
 name=glm52-3p1d
+dkr=(docker)
+[[ -z ${DOCKER_HOST:-} ]] || dkr=(docker -H "$DOCKER_HOST")
 on() {
   local i=$1; shift
   if [[ $i == 0 ]]; then "$@"; else ssh -o BatchMode=yes -o ConnectTimeout=8 "${hosts[$i]}" "$(printf '%q ' "$@")"; fi
@@ -100,7 +102,7 @@ ready() {
   done
   echo "Readiness timed out: $url" >&2; return 1
 }
-dlog() { on_root 3 docker exec "$name" cat /run-data/logs/d-blocks.jsonl | write_root "$1"; }
+dlog() { on_root 3 "${dkr[@]}" exec "$name" cat /run-data/logs/d-blocks.jsonl | write_root "$1"; }
 
 for i in 0 1 2 3; do
   if ! on_root "$i" true; then
@@ -119,7 +121,7 @@ for group in "${groups[@]}"; do
     host_hash=$(on "$i" sha256sum "$base/cluster.env" "$base/cases.tsv" | cut -d' ' -f1)
     test "$local_hash" = "$host_hash" || { echo "cluster.env or cases.tsv differs on ${roles[$i]}"; exit 1; }
     on_root "$i" bash "$base/node.sh" check "${roles[$i]}" "$group"
-    if on_root "$i" docker inspect "$name" >/dev/null 2>&1; then echo "Container already exists on ${roles[$i]}";exit 1;fi
+    if on_root "$i" "${dkr[@]}" inspect "$name" >/dev/null 2>&1; then echo "Container already exists on ${roles[$i]}";exit 1;fi
   done
   for phase in cal perf blocks; do
     echo "--- [$group/$trial] phase: $phase ---"
@@ -132,14 +134,14 @@ for group in "${groups[@]}"; do
     if [[ $phase == blocks ]]; then
       python3 tools/clock_check.py "${hosts[3]}" /dev/stdout | write_root "$out/clock-before.json"
     fi
-    as_root docker exec "$name" bash /deploy/bench.sh
+    as_root "${dkr[@]}" exec "$name" bash /deploy/bench.sh
     if [[ $phase != perf ]]; then
       dlog "$out/logs/d-blocks.jsonl"
     fi
-    if [[ $phase == cal ]]; then as_root docker exec "$name" python3 /deploy/tools/check_probe.py /run-data;fi
+    if [[ $phase == cal ]]; then as_root "${dkr[@]}" exec "$name" python3 /deploy/tools/check_probe.py /run-data;fi
     if [[ $phase == blocks ]]; then
       python3 tools/clock_check.py "${hosts[3]}" /dev/stdout | write_root "$out/clock-after.json"
-      as_root docker exec "$name" bash /deploy/finish.sh
+      as_root "${dkr[@]}" exec "$name" bash /deploy/finish.sh
     fi
     for i in 1 2 3 0; do on_root "$i" bash "$base/node.sh" down; done
   done

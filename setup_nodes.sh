@@ -17,6 +17,8 @@ python3 tools/verify_runtime.py
 
 roles=(p1 p2 p3 d)
 hosts=(localhost "${SSH_P2:-$P2}" "${SSH_P3:-$P3}" "${SSH_D:-$D}")
+dkr=(docker)
+[[ -z ${DOCKER_HOST:-} ]] || dkr=(docker -H "$DOCKER_HOST")
 on() {
   local i=$1; shift
   if [[ $i == 0 ]]; then "$@"; else ssh -o BatchMode=yes -o ConnectTimeout=8 "${hosts[$i]}" "$(printf '%q ' "$@")"; fi
@@ -102,7 +104,7 @@ echo "[3/4] Loading Docker image on all 4 nodes (in parallel)..."
 pids=()
 for i in 0 1 2 3; do
   (
-    if on_root "$i" docker image inspect "$IMAGE" >/dev/null 2>&1; then
+    if on_root "$i" "${dkr[@]}" image inspect "$IMAGE" >/dev/null 2>&1; then
       echo "  ${roles[$i]}: Docker image already loaded"
     else
       echo "  ${roles[$i]}: loading image.tar.zst ..."
