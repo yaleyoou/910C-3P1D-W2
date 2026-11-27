@@ -143,26 +143,64 @@ sha256sum -c assets.sha256
 rm -f image.seg-*
 ```
 
-### 服务器端解包、校验与导入镜像
+### 服务器端解包、一键分发与开跑（适配普通用户 + 相同 `sudo` 密码）
 
-方案 A 或方案 B 完成后，在 `910a3_27` 仓库根目录执行（需宿主机已安装 `zstd`）：
+以下以控制机 `61.28.30.27`、运行用户 `c60040001`、部署目录 `/home/c60040001/yxy/910C-3P1D-W2` 为例（其余三台节点为 `61.28.30.xx`）。`setup_nodes.sh` 和 `case.sh` 均支持**需要输密码的 `sudo`**：只在启动时交互式输入一次密码，驻留当前进程内存，不落盘、不写入命令行参数，避免长跑中途 `sudo` 缓存过期卡住。
+
+1. **在 `61.28.30.27`（`c60040001` 用户）解包并校验本地资产**：
 
 ```bash
-cd /你的仓库路径/910C-3P1D-W2
-
-# 1. 解压 W2 测试集与 MemFabric 4T 补丁运行库
+cd /home/c60040001/yxy/910C-3P1D-W2
+git pull
 mkdir -p data
 tar -xzf w2-data.tar.gz -C data
 tar -xzf memfabric-complete.tar.gz
-
-# 2. 全量离线校验（7 个 MemFabric 库、镜像压缩包与解压 tar 的 SHA-256、985 条 W2 请求）
 bash check_assets.sh
-
-# 3. 导入 Docker 镜像（正常输出 sha256:b3c4ed45ab4433bda7a306fdaabdd33481d32df9fd41b54dc0c6066602c34fc6 arm64）
-sudo bash node.sh load
 ```
 
-镜像导入完成后，按本页第 2 节编辑 `cluster.env` 并同步部署目录到其余三台 910C（若四台共享目录则跳过同步），在其余三台**各自执行一次** `sudo bash node.sh load`，随后按「首次启动和单请求验收」完成 `sudo bash node.sh check p1|p2|p3|d` 与试跑。
+2. **打通 `61.28.30.27` 上 `c60040001` 到其余三台的 SSH 免密**（只需做一次）：
+
+```bash
+# 在 61.28.30.27（c60040001）生成密钥
+test -f ~/.ssh/id_ed25519 || ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519
+
+# 若其余三台允许 c60040001 密码 SSH，直接分发（把 P2_IP P3_IP D_IP 换成实际 61.28.30.xx）：
+for ip in P2_IP P3_IP D_IP; do
+  ssh-copy-id -o StrictHostKeyChecking=accept-new "c60040001@$ip"
+done
+```
+
+> 若服务器禁用了 `c60040001` 的密码 SSH（只能从外部登录进各台切到 `c60040001`），只需把 `61.28.30.27` 上 `cat ~/.ssh/id_ed25519.pub` 输出的那一行追加到另外三台的 `/home/c60040001/.ssh/authorized_keys`（确保 `chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys`），再在 `.27` 上执行一次 `for ip in P2_IP P3_IP D_IP; do ssh -o StrictHostKeyChecking=accept-new c60040001@$ip hostname; done` 确认免密即可。
+
+3. **在 `61.28.30.27` 编辑 `cluster.env`**：
+   - 将 `P1`、`P2`、`P3`、`D` 填为四台互通的业务网 IPv4（若业务网就是 `61.28.30.xx` 则直接填；若业务网是另一网段如 `10.x.x.x`，则同时取消注释 `SSH_P2=c60040001@61.28.30.xx`、`SSH_P3=...`、`SSH_D=...`）。
+   - 将 `MODEL_DIR` 填为宿主机模型权重的实际绝对路径。
+
+4. **一键同步四台、并行导入镜像、开启 D 节点 `device-share` 并体检**：
+
+```bash
+cd /home/c60040001/yxy/910C-3P1D-W2
+bash setup_nodes.sh
+```
+
+按提示输入一次 `c60040001` 的 `sudo` 密码后，脚本会自动将 `/home/c60040001/yxy/910C-3P1D-W2`（含 `image.tar.zst`、解包后的 `data/` 与 `upgrades/`、`cluster.env`、`cases.tsv`）同步到另外三台相同目录，四台并行 `docker load`，在 D 上开启 16 个 die 的 `device-share`，并完成四台 `node.sh check` 预检。
+
+5. **在 `tmux`（或 `screen`）里一键启动测试（全程只需输一次 `sudo` 密码）**：
+
+```bash
+tmux new -s w2
+cd /home/c60040001/yxy/910C-3P1D-W2
+
+# 先跑单组 F1：
+bash case.sh F1 r1
+
+# 或者一次指定多组 / 全部 8 组连跑（只在一开始输一次 sudo 密码，中途不会再停下等输入）：
+bash case.sh F5,F2,F3,F4,EC1,ES1,EJ1 r1
+# 或直接跑 cases.tsv 全部组：
+bash case.sh all r1
+```
+
+每跑完一组，`runs/summary_r1.md` 都会自动更新为与 `evidence/旧1P1D结果.md` 完全一致的 17 列 Markdown 表格。
 
 ## Windows 一键下载镜像、MemFabric 和 W2
 
