@@ -183,12 +183,11 @@ cd /home/c60040001/yxy/910C-3P1D-W2
 bash setup_nodes.sh
 ```
 
-按提示输入一次 `c60040001` 的 `sudo` 密码后，脚本会自动将 `/home/c60040001/yxy/910C-3P1D-W2`（含 `image.tar.zst`、解包后的 `data/` 与 `upgrades/`、`cluster.env`、`cases.tsv`）同步到另外三台相同目录，四台并行 `docker load`，在 D 上开启 16 个 die 的 `device-share`，并完成四台 `node.sh check` 预检。
+按提示输入一次 `c60040001` 的 `sudo` 密码后，脚本会自动将 `/home/c60040001/yxy/910C-3P1D-W2`（含 `image.tar.zst`、解包后的 `data/` 与 `upgrades/`、`cluster.env`、`cases.tsv`）同步到参与实验的其余节点相同目录（无 `rsync` 时自动改用 `tar` over SSH），并行 `docker load`，在 D 上开启 16 个 die 的 `device-share`，并完成所有活跃节点的 `node.sh check` 预检。
 
-5. **在 `tmux`（或 `screen`）里一键启动测试（全程只需输一次 `sudo` 密码）**：
+5. **一键启动测试（全程只需输一次 `sudo` 密码；若集群装有 `tmux` / `screen` 建议在其内运行）**：
 
 ```bash
-tmux new -s w2
 cd /home/c60040001/yxy/910C-3P1D-W2
 
 # 先跑单组 F1：
@@ -201,6 +200,31 @@ bash case.sh all r1
 ```
 
 每跑完一组，`runs/summary_r1.md` 都会自动更新为与 `evidence/旧1P1D结果.md` 完全一致的 17 列 Markdown 表格。
+
+### 临时跳过被占用的 P 节点（切换为 2P1D / 1P1D）
+
+如果某台 P 节点（例如 `P2`）当前被他人占用，无需改动任何脚本，按下面 4 步即可直接切到 **2P1D**（留空 `P2` 和 `P3` 则自动按 **1P1D** 运行）：
+
+```bash
+cd /home/c60040001/yxy/910C-3P1D-W2
+
+# 1. 拉取最新脚本（保留本地 cluster.env）
+git fetch origin && git checkout origin/main -- agentx.sh bench.sh case.sh node.sh services/proxy.sh setup_nodes.sh tools/
+
+# 2. 将被占用的 P 置空（以跳过 P2 为例；恢复 3P1D 时把 IP 填回即可）
+sed -i 's/^P2=.*/P2=/' cluster.env && grep -E '^(P1|P2|P3|D|P_STORE)=' cluster.env
+
+# （可选）2P1D 下若想保持两台 P 的 Store 合计仍为 192 GiB（与原 F1 总预算 384 GiB 一致）：
+# sed -i 's/^P_STORE=.*/P_STORE=96/' cluster.env
+
+# 3. 仅同步配置与脚本到实际参与的远端节点（不碰被占用的 P2，无需 rsync）
+source cluster.env && for h in "${SSH_P3:-$P3}" "${SSH_D:-$D}"; do tar -cf - cluster.env cases.tsv agentx.sh bench.sh case.sh node.sh setup_nodes.sh services tools | ssh "$h" "tar -xf - -C '$PWD'"; done
+
+# 4. 用新的 trial 名启动（日志会打印 topology=2P1D，proxy.log 显示 Initialized 2 prefill clients）
+bash case.sh F1 r2
+```
+
+> 若之前失败的 3P1D 运行在节点上残留了旧容器，用 `node.sh down` 只会清理带 `experiment=glm52-3p1d` 标签的本实验容器，不会影响同节点他人的作业；也可用 `ssh -tt <节点IP> "sudo docker rm -f glm52-3p1d"` 精准删除。
 
 ## Windows 一键下载镜像、MemFabric 和 W2
 
@@ -320,7 +344,7 @@ done
 
 ## 2. 分发文件和模型
 
-在 Linux 部署目录执行 `sha256sum -c assets.sha256`，两项都应显示 OK。随后把恢复好的部署目录连同修改后的 cluster.env 复制到其余三台机器的**同一个绝对路径**，例如 `/data/910C-3P1D-W2`。四台若共享这个目录，只复制一次。控制机 P1 需要能用普通 SSH 登录 P2、P3、D。自动流程需要 P1 免交互 SSH 到其余三台，并在各机通过 `sudo -n` 执行 node.sh、docker 等命令，P1 还用到 sudo tee。不同登录账号可以在 P1 设置 `SSH_P2=user@host`、`SSH_P3=user@host`、`SSH_D=user@host`。若这些 sudo 权限不可用，使用后面的手动流程。
+在 Linux 部署目录执行 `sha256sum -c assets.sha256`，两项都应显示 OK。随后把恢复好的部署目录连同修改后的 cluster.env 复制到其余节点的**同一个绝对路径**，例如 `/home/c60040001/yxy/910C-3P1D-W2`。各节点若共享这个目录，只复制一次。控制机 P1 需要能通过免密 SSH 登录其余活跃节点（`setup_nodes.sh`、`case.sh`、`agentx.sh` 均已支持密码 `sudo`，启动时只输入一次并仅驻留内存；无 `rsync` 时自动回退为 `tar` over SSH；无需宿主机安装 `docker-init`）。不同登录账号可在 P1 设置 `SSH_P2=user@host`、`SSH_P3=user@host`、`SSH_D=user@host`。若无法配置自动流程，使用文末手动分步流程。
 
 若 P1 已在 /data 恢复完整部署包且四台目录不共享，在 P1 执行下例。三个目标登录名换成实际 SSH 别名或 user@host，目标账号需可写 /data。若已配置共享目录，跳过复制。
 
@@ -405,19 +429,88 @@ bash case.sh F1 r1
 
 每个阶段只有一个 Master、一个 D。每台 P 各绑定自己的 8100，P1 的正式 proxy 是 8300。因 P 侧路由和命中分布会变，检查最终 `per-P.json` 中三台各自的前缀查询量、命中数、队列和 Store 占用。一个根会话不保证固定落在同一个 P。
 
-查看进度（以 F1 perf 为例）：
+### 实时查看进度与排障
+
+在 P1 新开一个终端窗口进入仓库目录即可实时监控（不影响正在运行的测试）：
+
+1. **检查所有活跃节点引擎是否已就绪（无需 `sudo`，全返回 `200` 即进入校准/压测）**：
 
 ```bash
-tail -f runs/F1/r1/perf/p1/finite-client/events.jsonl
-tail -n 20 runs/F1/r1/perf/p1/logs/proxy.log
-curl --noproxy '*' -fsS "http://$(. ./cluster.env; echo "$P1"):50089/metrics" | grep -E '^master_(allocated|total_capacity)_bytes '
+cd /home/c60040001/yxy/910C-3P1D-W2
+source cluster.env
+for ip in ${P1:-} ${P2:-} ${P3:-}; do echo -n "P $ip:8100 -> "; curl --noproxy '*' -s -o /dev/null -w '%{http_code}\n' "http://$ip:8100/health"; done
+echo -n "D $D:8200 -> "; curl --noproxy '*' -s -o /dev/null -w '%{http_code}\n' "http://$D:8200/health"
+echo -n "Proxy $P1:8300 -> "; curl --noproxy '*' -s -o /dev/null -w '%{http_code}\n' "http://$P1:8300/healthcheck"
 ```
 
-每轮结果目录由组名、trial、阶段、角色组成。失败时保留容器与日志，查看相应节点的 `logs/p.log`、`logs/d.log`、`logs/store-d.log` 或 proxy 日志。检查 D 是否实际规划到了目标 sparse 容量、四台设备健康、不同 P 的传输会话能否正确连到 D。修正后各有容器的节点运行 `sudo bash node.sh down`，重试用新 trial，如 r2。停止命令只操作标记为本实验的容器。
+2. **每 5 秒自动刷新的实时进度看板（同时兼容 W2 985 条与 AgentX 3600s）**：
+
+```bash
+PATH="/home/miniconda3/bin:$PATH" python3 -c '
+import glob, json, os, time
+while True:
+    cands = sorted(glob.glob("runs/*/*/*/p1"), key=os.path.getmtime)
+    d = cands[-1] if cands else None
+    print("\033[2J\033[H" + time.strftime("%H:%M:%S"), "当前阶段:", d)
+    if d:
+        ev = next((p for p in [d+"/finite-client/events.jsonl", d+"/agentx-client/events.jsonl"] if os.path.exists(p)), None)
+        if ev:
+            sent = done = err = tok = 0; ttfts = []; tpots = []; t0 = None
+            for line in open(ev):
+                try: r = json.loads(line)
+                except Exception: continue
+                e = r.get("event")
+                if e == "send": sent += 1; t0 = t0 or r.get("wall_time")
+                elif e == "done":
+                    done += 1; tok += (r.get("usage") or {}).get("completion_tokens", 0)
+                    if r.get("ttft_s") is not None: ttfts.append(r["ttft_s"])
+                    if r.get("tpot_ms") is not None: tpots.append(r["tpot_ms"])
+                elif e == "error": err += 1
+            el = max(1e-6, time.time() - t0) if t0 else 0
+            tot = "/985" if "finite-client" in ev else ""
+            print(f"进度: 完成 {done}{tot} | 在途 {sent-done-err} | 失败 {err} | 已运行 {el:.0f}s | 均速 {tok/el if el else 0:.1f} tok/s")
+            if ttfts: print(f"延迟: TTFT均值 {sum(ttfts)/len(ttfts):.2f}s | TPOT均值 {sum(tpots)/len(tpots) if tpots else 0:.2f}ms")
+        else:
+            print("状态: 模型加载 / 图编译 / 校准中（尚未开始正式发请求）")
+        mp = d + "/metrics.jsonl"
+        if os.path.exists(mp):
+            lines = [x for x in open(mp) if x.strip()]
+            if lines:
+                m = json.loads(lines[-1]); ps = [k for k in ("P1","P2","P3") if k in m]
+                pq = {p: int(m[p]["waiting"]) for p in ps}; p_st = sum(m["master"][p+"_segment_allocated_bytes"] for p in ps)
+                d_cap = m["D"]["capacity"]; d_kv = 100*m["D"]["kv_usage"]; d_st = m["master"].get("D_segment_allocated_bytes", 0.0); reg = m["master"]["registered"]
+                print(f"队列/KV: P等待={pq} | D容量等待={d_cap:.0f} | D逻辑KV={d_kv:.1f}% | Store占用: P={p_st:.1f}G D={d_st:.1f}G (注册 {reg:.1f}G)")
+    time.sleep(5)
+'
+```
+
+3. **单独追踪引擎日志、Proxy 日志与 Mooncake Store 指标**：
+
+```bash
+# P1 引擎加载/推理日志
+tail -f "$(ls -dt runs/*/*/*/p1 | head -1)/logs/p.log"
+
+# D 节点加载/sparse池/图编译日志（在 P1 上远程查看）
+source cluster.env && ssh "${SSH_D:-$D}" "tail -f \"\$(ls -dt '$PWD'/runs/*/*/*/d | head -1)/logs/d.log\""
+
+# Proxy 路由与健康检查日志
+tail -f "$(ls -dt runs/*/*/*/p1 | head -1)/logs/proxy.log"
+
+# Mooncake Master 实时段注册与已用容量
+curl --noproxy '*' -fsS "http://$(. ./cluster.env; echo "$P1"):50089/metrics" | grep -E '^(master|segment)_(allocated|total_capacity)_bytes'
+```
+
+**常见问题速查**：
+- **读 `runs/` 报 `Permission denied`**：部分系统（如 EulerOS）`root` 默认 `umask=0077`。新版 `node.sh` / `case.sh` / `agentx.sh` 已自动设置 `umask 022` 与 `chmod a+rX runs`；若查看旧版本跑出的目录，执行一次 `sudo chmod -R a+rX runs` 即可。
+- **报 `Container already exists on ...`**：对应节点残留了上次的 `glm52-3p1d` 容器，运行 `ssh -tt <节点IP> "sudo docker rm -f glm52-3p1d"` 后重跑即可。
+- **所有活跃节点 `200 OK` 但迟迟没发请求**：查看 `proxy.log` 的 `Initialized N prefill clients` 核对实际启用的 P 数量是否与 `cluster.env` 一致；另外 `cal` 校准阶段只发 N 条探针、不生成 `events.jsonl` 与 `metrics.jsonl`，属于正常现象。
+- **`tar` 同步时提示「时间戳是未来的 xx 秒之后」**：仅表示节点间系统时钟存在固定偏差，不影响启动；`blocks` 阶段会通过 `clock_check.py` 自动测量并对消 P1 与 D 的时钟偏移。
+
+每轮结果目录由组名、trial、阶段、角色组成。失败时保留容器与日志，查看相应节点的 `logs/p.log`、`logs/d.log`、`logs/store-d.log` 或 proxy 日志。修正后在各活跃节点运行 `sudo bash node.sh down`，重试用新 trial（如 `r2`、`r3`）。停止命令只操作带 `experiment=glm52-3p1d` 标签的容器。
 
 ## 5. 配额表、自定义配额与扩容对照
 
-`cases.tsv` 定义各组的配额；默认总预算 = `3 × P_STORE + D_store_GiB + D_sparse_GiB`（单位 GiB）。
+`cases.tsv` 定义各组的配额；总预算自动按 `活跃 P 台数 × P_STORE + D_store_GiB + D_sparse_GiB` 计算（3P1D 默认 `3 × 64 = 192 GiB`）。
 
 | 组 | D Store | D sparse | 总预算 | 对照目的 |
 |---|---:|---:|---:|---|
@@ -439,7 +532,7 @@ for g in F5 F2 F3 F4 EC1 ES1 EJ1; do bash case.sh "$g" r1 || break; done
 三项配额均支持按需修改（**修改 `cluster.env` 或 `cases.tsv` 后，若四台磁盘独立，需同步到其余三台以通过一致性校验**）：
 
 - **P Store（每台 P 的 Mooncake Store，单位 GiB）**：
-  - 全局修改：编辑 `cluster.env` 中的 `P_STORE=64`（三台 P 合计 `3 × P_STORE` GiB；TP16 下平分给 16 个 worker，建议填 16 的整数倍，如 `16 / 32 / 48 / 64 / 128`）。
+  - 全局修改：编辑 `cluster.env` 中的 `P_STORE=64`（总 P Store 为 `活跃 P 台数 × P_STORE` GiB；TP16 下平分给 16 个 worker，建议填 16 的整数倍，如 `16 / 32 / 48 / 64 / 96 / 128`；例如 2P1D 下设 `P_STORE=96` 即可保持总 P Store 为 `192 GiB`）。
   - 单组覆盖：也可在 `cases.tsv` 某一行末尾追加可选第 4 列 `P_store_GiB`（不填则使用 `cluster.env` 的 `P_STORE`）。
 - **D Store（D 节点 Mooncake Store，单位 GiB）**：
   - 在 `cases.tsv` 第 2 列设置（`0` 表示不启动 D Store donor；`> 0` 时建议取 16 的整数倍，且 D 节点需按第 1 节开启 16 个 die 的 `device-share`）。
