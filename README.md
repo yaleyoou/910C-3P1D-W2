@@ -469,7 +469,7 @@ curl --noproxy '*' -fsS "http://$(. ./cluster.env; echo "$P1"):50089/metrics" | 
 
 **常见问题速查**：
 - **读 `runs/` 报 `Permission denied`**：部分系统（如 EulerOS）`root` 默认 `umask=0077`。新版 `node.sh` / `case.sh` / `agentx.sh` 已自动设置 `umask 022` 与 `chmod a+rX runs`；若查看旧版本跑出的目录，执行一次 `sudo chmod -R a+rX runs` 即可。
-- **报 `Container already exists on ...`**：对应节点残留了上次的 `glm52-3p1d` 容器，运行 `ssh -tt <节点IP> "sudo docker rm -f glm52-3p1d"` 后重跑即可。
+- **报 `Container already exists on ...` / 需要一键停止全部活跃节点上的服务**：运行 `bash stop.sh`（只需输一次 `sudo` 密码，只停止并清理带 `experiment=glm52-3p1d` 标签的本实验容器，不会影响同节点他人的作业）。
 - **所有活跃节点 `200 OK` 但迟迟没发请求**：查看 `proxy.log` 的 `Initialized N prefill clients` 核对实际启用的 P 数量是否与 `cluster.env` 一致；另外 `cal` 校准阶段只发 N 条探针、不生成 `events.jsonl` 与 `metrics.jsonl`，属于正常现象。
 - **`tar` 同步时提示「时间戳是未来的 xx 秒之后」**：仅表示节点间系统时钟存在固定偏差，不影响启动；`blocks` 阶段会通过 `clock_check.py` 自动测量并对消 P1 与 D 的时钟偏移。
 
