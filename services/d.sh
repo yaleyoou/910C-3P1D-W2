@@ -22,6 +22,11 @@ exec > /run-data/logs/d.log 2>&1
 if [[ "$PHASE" != perf ]]; then export PYTHONPATH=/deploy/dhook:$PYTHONPATH; fi
 D_DP=${D_DP:-1}
 D_TP=$((16 / D_DP))
+D_MAX_NUM_SEQS=${D_MAX_NUM_SEQS:-16}
+cg_sizes="1"
+for sz in 2 4 8 16 32 48 64; do
+  if ((sz <= D_MAX_NUM_SEQS)); then cg_sizes="$cg_sizes, $sz"; fi
+done
 dp_args=()
 if ((D_DP > 1)); then
   dp_args=(--data-parallel-address "$D" --data-parallel-rpc-port 29550)
@@ -41,7 +46,7 @@ exec vllm serve /models/glm-q \
     --kv-cache-dtype bfloat16 \
     --attention-config '{"indexer_kv_dtype":"int8"}' \
     --max-model-len 256000 \
-    --max-num-seqs 32 \
+    --max-num-seqs "$D_MAX_NUM_SEQS" \
     --watermark 0.2 \
     --max-num-batched-tokens 2048 \
     --block-size 128 \
@@ -52,7 +57,7 @@ exec vllm serve /models/glm-q \
     --generation-config vllm \
     --trust-remote-code \
     --seed 0 \
-    --compilation-config '{"cudagraph_mode":"FULL_DECODE_ONLY","cudagraph_capture_sizes":[1, 2, 4, 8, 16, 32]}' \
+    --compilation-config '{"cudagraph_mode":"FULL_DECODE_ONLY","cudagraph_capture_sizes":['"$cg_sizes"']}' \
     --additional-config '{
         "ascend_log_path": "/dev/shm/glm52-ascend-logs",
         "sparse_kv_offload_config": {
