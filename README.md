@@ -446,7 +446,7 @@ echo -n "Proxy $P1:8300 -> "; curl --noproxy '*' -s -o /dev/null -w '%{http_code
 2. **每 5 秒自动刷新的实时进度看板（同时兼容 W2 985 条与 AgentX 3600s）**：
 
 ```bash
-PATH="/home/miniconda3/bin:$PATH" python3 -c '
+sudo env PATH="/home/miniconda3/bin:$PATH" python3 -c '
 import glob, json, os, time
 while True:
     cands = sorted(glob.glob("runs/*/*/*/p1"), key=os.path.getmtime)
@@ -471,7 +471,9 @@ while True:
             print(f"进度: 完成 {done}{tot} | 在途 {sent-done-err} | 失败 {err} | 已运行 {el:.0f}s | 均速 {tok/el if el else 0:.1f} tok/s")
             if ttfts: print(f"延迟: TTFT均值 {sum(ttfts)/len(ttfts):.2f}s | TPOT均值 {sum(tpots)/len(tpots) if tpots else 0:.2f}ms")
         else:
-            print("状态: 模型加载 / 图编译 / 校准中（尚未开始正式发请求）")
+            phase = d.split("/")[-2]
+            msg = "校准阶段（加载模型或发送 P→D 探针中）" if phase == "cal" else f"{phase} 阶段：模型加载 / 图编译 / 等待段注册中（尚未开始发请求）"
+            print("状态:", msg)
         mp = d + "/metrics.jsonl"
         if os.path.exists(mp):
             lines = [x for x in open(mp) if x.strip()]
