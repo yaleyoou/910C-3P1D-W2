@@ -56,11 +56,15 @@ mounts=()
 for path in /usr/local/bin/npu-smi /etc/hccn.conf /etc/ascend_install.info /usr/local/Ascend/driver /usr/local/Ascend/firmware /usr/local/dcmi; do
   [[ -e $path ]] || { echo "$ROLE: missing host mount $path" >&2; exit 1; }; mounts+=(-v "$path:$path:ro")
 done
+D_DP=${D_DP:-1}
+case $D_DP in 1|2|4|8|16) ;; *) echo "cluster.env: D_DP=$D_DP must divide 16 (1/2/4/8/16)" >&2; exit 1 ;; esac
+D_TP=$((16 / D_DP))
+max_sparse=$((4096 / D_TP))
 if [[ -n ${3:-} ]]; then
   read -r D_STORE SPARSE CASE_P_STORE < <(awk -v g="$3" '$1 !~ /^#/ && $1 != "case" && $1==g{print $2,$3,$4; exit}' cases.tsv)
   [[ -n ${D_STORE:-} && -n ${SPARSE:-} ]] || { echo "Unknown case '$3' in cases.tsv" >&2; exit 1; }
   if [[ -n ${CASE_P_STORE:-} ]]; then P_STORE=$CASE_P_STORE; fi
-  ((SPARSE > 0 && SPARSE <= 256)) || { echo "$ROLE: D_sparse_GiB=$SPARSE must be in 1..256 (TP16 4 TiB MemFabric limit)" >&2; exit 1; }
+  ((SPARSE > 0 && SPARSE <= max_sparse)) || { echo "$ROLE: D_sparse_GiB=$SPARSE must be in 1..$max_sparse (DP=$D_DP TP=$D_TP 4 TiB MemFabric limit)" >&2; exit 1; }
   if [[ $ROLE == d ]] && ((D_STORE > 0)); then
     if /usr/local/bin/npu-smi info -t device-share -i 0 -c 0 2>/dev/null | grep -qi 'false'; then
       echo "d: NPU device-share is disabled (required when D_STORE=$D_STORE > 0); see README section 1" >&2
@@ -68,7 +72,7 @@ if [[ -n ${3:-} ]]; then
     fi
   fi
 fi
-echo "$ROLE: $NODE_IP on $IFACE, $MODEL_DIR -> /models/glm-q"
+echo "$ROLE: $NODE_IP on $IFACE, $MODEL_DIR -> /models/glm-q$([[ $ROLE == d ]] && echo " (D_DP=$D_DP D_TP=$D_TP)")"
 [[ $action != check ]] || exit 0
 CASE=${3:?F1}; PHASE=${4:?cal|perf|blocks}; TRIAL=${5:?r1}
 case $PHASE in cal|perf|blocks) ;; *) exit 2 ;; esac
@@ -77,8 +81,8 @@ output="$PWD/runs/$CASE/$TRIAL/$PHASE/$ROLE"
 mkdir -p "$(dirname "$output")"; mkdir "$output"; mkdir "$output/logs"
 chmod a+rX "$PWD/runs" "$PWD/runs/$CASE" "$PWD/runs/$CASE/$TRIAL" "$PWD/runs/$CASE/$TRIAL/$PHASE" "$output" "$output/logs" 2>/dev/null || true
 cp cluster.env cases.tsv "$output/"
-export P1 P2 P3 D IFACE ROLE PHASE CASE TRIAL NODE_IP P_STORE SPARSE D_STORE
-args=(); for var in P1 P2 P3 D IFACE ROLE PHASE CASE TRIAL NODE_IP P_STORE SPARSE D_STORE; do args+=(-e "$var"); done
+export P1 P2 P3 D IFACE ROLE PHASE CASE TRIAL NODE_IP P_STORE SPARSE D_STORE D_DP
+args=(); for var in P1 P2 P3 D IFACE ROLE PHASE CASE TRIAL NODE_IP P_STORE SPARSE D_STORE D_DP; do args+=(-e "$var"); done
 docker run -d --name "$NAME" --label experiment=glm52-3p1d --network host --shm-size 64g --ulimit memlock=-1:-1 \
   "${devices[@]}" "${mounts[@]}" "${args[@]}" \
   -v "$PWD:/deploy:ro" -v "$output:/run-data" -v "$MODEL_DIR:/models/glm-q:ro" \

@@ -40,7 +40,7 @@ for rid,v in by_id.items():
     if 'finish' not in v or 'ready' not in v: continue
     a,f=v['alloc'],v['finish']; assert a['block_size']==block
     assert f['hashes'][:len(a['hashes'])] == a['hashes']
-    requests.append((v['ready']['t_ns']-offset,f['t_ns']-offset,a['tokens'],f['tokens']-1,f['slots'],f['hashes']))
+    requests.append((v['ready']['t_ns']-offset,f['t_ns']-offset,a['tokens'],f['tokens']-1,[(f.get('dp',0),s) for s in f['slots']],f['hashes']))
 # One logical slot per physical D block, including shared prefix slots only once.
 def sample(t,keys):
     lower={}; upper={}; middle={}; lo_match={}; hi_match={}; mid_match={}; unique={}

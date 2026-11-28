@@ -232,12 +232,19 @@ class SFAPDRD2HProducerScheduler:
 
 
 
+import fcntl as _ov_fcntl
 import time as _ov_time
 import json as _ov_json
 
 def _ov_write(event, **fields):
+    line = _ov_json.dumps(dict(t_ns=_ov_time.time_ns(), event=event, **fields)) + '\n'
     with open('/run-data/logs/d-blocks.jsonl', 'a') as stream:
-        print(_ov_json.dumps(dict(t_ns=_ov_time.time_ns(), event=event, **fields)), file=stream)
+        _ov_fcntl.flock(stream.fileno(), _ov_fcntl.LOCK_EX)
+        try:
+            stream.write(line)
+            stream.flush()
+        finally:
+            _ov_fcntl.flock(stream.fileno(), _ov_fcntl.LOCK_UN)
 
 class SFAPDRD2HScheduler:
     def __init__(
@@ -378,7 +385,7 @@ class SFAPDRD2HScheduler:
         main_block_ids = list(block_ids_by_group[self.main_group_idx])
         indexer_block_ids = list(block_ids_by_group[self.indexer_group_idx])
         self._request_trackers[request.request_id] = (main_block_ids, indexer_block_ids)
-        _ov_write('alloc', req=request.request_id, block_size=self.main_block_size, slots=main_block_ids, tokens=request.num_tokens, hashes=[h if isinstance(h,str) else h.hex() for h in request.block_hashes])
+        _ov_write('alloc', req=request.request_id, dp=self.vllm_config.parallel_config.data_parallel_rank, block_size=self.main_block_size, slots=main_block_ids, tokens=request.num_tokens, hashes=[h if isinstance(h,str) else h.hex() for h in request.block_hashes])
         dspark_context_descriptor = None
         dspark_draft_block_ids_by_group = None
         if getattr(self, "_dspark_context_groups", ()):
@@ -512,7 +519,7 @@ class SFAPDRD2HScheduler:
         request: Request,
         block_ids: tuple[list[int], ...],
     ) -> tuple[bool, dict[str, Any] | None]:
-        _ov_write('finish', req=request.request_id, tokens=request.num_tokens, hashes=[h if isinstance(h,str) else h.hex() for h in request.block_hashes], slots=list(block_ids[self.main_group_idx]))
+        _ov_write('finish', req=request.request_id, dp=self.vllm_config.parallel_config.data_parallel_rank, tokens=request.num_tokens, hashes=[h if isinstance(h,str) else h.hex() for h in request.block_hashes], slots=list(block_ids[self.main_group_idx]))
         if request.request_id in self._dspark_pending_recv:
             # Let the existing rendezvous and reads drain naturally. vLLM
             # retains the KV blocks; retain the connector's destinations too.

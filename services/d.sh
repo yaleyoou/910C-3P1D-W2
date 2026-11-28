@@ -20,12 +20,19 @@ source /deploy/upgrades/memfabric/enable_4t.sh
 exec > /run-data/logs/d.log 2>&1
 
 if [[ "$PHASE" != perf ]]; then export PYTHONPATH=/deploy/dhook:$PYTHONPATH; fi
+D_DP=${D_DP:-1}
+D_TP=$((16 / D_DP))
+dp_args=()
+if ((D_DP > 1)); then
+  dp_args=(--data-parallel-address "$D" --data-parallel-rpc-port 29550)
+fi
 exec vllm serve /models/glm-q \
     --host $D \
     --port 8200 \
     --served-model-name glm-5 \
-    --tensor-parallel-size 16 \
-    --data-parallel-size 1 \
+    --tensor-parallel-size "$D_TP" \
+    --data-parallel-size "$D_DP" \
+    "${dp_args[@]}" \
     --pipeline-parallel-size 1 \
     --enable-expert-parallel \
     --distributed-executor-backend mp \

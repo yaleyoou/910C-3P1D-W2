@@ -86,10 +86,12 @@ def summarize_run(run_dir: Path, scope: str = 'total', details_path: Path | None
 
     in_win = s['in_window']
     p_count = g.get('p_count', len(ps))
+    d_dp = g.get('d_dp', 1)
+    sparse_label = f"{g['sparse']}×{d_dp}" if d_dp > 1 else f"{g['sparse']}"
     return {
         '组别': g['case'],
-        'D Store / sparse（GiB）': f"{g['ds']} / {g['sparse']}",
-        '总预算 GiB': g['ps'] * p_count + g['ds'] + g['sparse'],
+        'D Store / sparse（GiB）': f"{g['ds']} / {sparse_label}",
+        '总预算 GiB': g['ps'] * p_count + g['ds'] + g['sparse'] * d_dp,
         '并发 c': s['concurrency'],
         '时长 s': int(round(s['configured_duration_s'])),
         '3600s内完成请求': in_win['requests_completed'],

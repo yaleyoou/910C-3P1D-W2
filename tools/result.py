@@ -43,7 +43,9 @@ def summarize(run, details=None):
     g=read(perf/'params.json')
     assert g==read(block/'params.json')
     p_count=g.get('p_count',len(ps))
-    result={'组别':g['case'],'D Store / sparse（GiB）':f"{g['ds']} / {g['sparse']}",'总预算 GiB':g['ps']*p_count+g['ds']+g['sparse'],
+    d_dp=g.get('d_dp',1)
+    sparse_label=f"{g['sparse']}×{d_dp}" if d_dp>1 else f"{g['sparse']}"
+    result={'组别':g['case'],'D Store / sparse（GiB）':f"{g['ds']} / {sparse_label}",'总预算 GiB':g['ps']*p_count+g['ds']+g['sparse']*d_dp,
       '输出 tok/s':s['output_tokens_per_s'],'TTFT 均值 s':s['ttft_mean_s'],'TTFT P95 s':s['ttft_p95_s'],
       '平均 TPOT ms':s['tpot_mean_ms'],'P 平均排队数（三台合计）':sum(v['queue'] for v in per_p.values()),
       'D 平均容量等待数':avg(lambda x:x['D']['capacity']),'P 合计前缀命中率 %':100*h/q,
