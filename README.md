@@ -209,7 +209,7 @@ bash case.sh all r1
 cd /home/c60040001/yxy/910C-3P1D-W2
 
 # 1. 更新最新脚本（保留你本地改好的 cluster.env 和 cases.tsv，避免 git pull 冲突）
-git fetch origin && git checkout origin/main -- agentx.sh bench.sh case.sh logs.sh node.sh services/ setup_nodes.sh stop.sh watch.sh tools/
+git fetch origin && git checkout origin/main -- agentx.sh bench.sh case.sh logs.sh node.sh services/ setup_nodes.sh stop.sh sync_code.sh watch.sh tools/
 
 # 2. 确认 4 台目标节点的宿主机 NPU 驱动版本均为 26.1.3（把 IP 换成实际节点）
 for ip in P1_IP P2_IP P3_IP D_IP; do echo -n "$ip -> "; ssh -o BatchMode=yes -o ConnectTimeout=3 "$ip" 'head -n1 /usr/local/Ascend/driver/version.info 2>/dev/null || echo N/A' 2>/dev/null || echo UNREACHABLE; done
@@ -220,8 +220,11 @@ for ip in P1_IP P2_IP P3_IP D_IP; do echo -n "$ip -> "; ssh -o BatchMode=yes -o 
 test -f ~/.ssh/id_ed25519 || ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519
 source cluster.env && for h in "${SSH_P2:-$P2}" "${SSH_P3:-$P3}" "${SSH_D:-$D}"; do ssh-copy-id -o StrictHostKeyChecking=accept-new "$h"; done
 
-# 4. 一键同步 4 台仓库+镜像包、并行 docker load（已有镜像自动跳过）、开 D 的 device-share 并体检：
+# 4. 同步与准备（二选一）：
+#    - 新节点尚未导镜像或首次配置：一键同步全部文件+镜像、并行 docker load、开 D 的 device-share 并体检
 bash setup_nodes.sh
+#    - 所有活跃节点镜像都已加载过、只改了代码或 cluster.env / cases.tsv：1 秒快速同步全部代码与配置（不重传 6.5 GiB 镜像，无需 rsync）
+bash sync_code.sh
 
 # （若某台残留旧的 glm52-3p1d 容器，一键清干净）
 bash stop.sh
@@ -231,9 +234,15 @@ bash case.sh F1 r5          # 单组 W2（或 bash case.sh all r5 连跑全部�
 # bash agentx.sh F1 r1      # 或跑 AgentX 3600s 零延迟回放（见第 7 节）
 ```
 
-跑起来后在 P1 新开终端即可使用三件套：
+> 若未拉取 `sync_code.sh`，也可直接在 P1 仓库目录用单行 `tar` 1 秒同步全部代码与配置到所有活跃节点（自动跳过 `cluster.env` 中留空的 `P2`/`P3`，`*.sh` 自动只打包本机已有的脚本）：
+> ```bash
+> source cluster.env && for h in ${P2:+${SSH_P2:-$P2}} ${P3:+${SSH_P3:-$P3}} "${SSH_D:-$D}"; do tar -cf - cluster.env cases.tsv *.sh services tools dhook | ssh "$h" "tar -xf - -C '$PWD'"; done
+> ```
+
+跑起来后在 P1 新开终端即可使用常用辅助脚本：
 - **实时进度看板**：`sudo bash watch.sh`
 - **本机/远程实时日志**：`bash logs.sh d`、`bash logs.sh p1`、`bash logs.sh p2`、`bash logs.sh p3`、`bash logs.sh proxy`
+- **改完代码/配额 1 秒同步其余节点**：`bash sync_code.sh`
 - **一键安全停全部节点**：`bash stop.sh`
 
 ### 临时跳过被占用的 P 节点（切换为 2P1D / 1P1D）
