@@ -443,48 +443,13 @@ echo -n "D $D:8200 -> "; curl --noproxy '*' -s -o /dev/null -w '%{http_code}\n' 
 echo -n "Proxy $P1:8300 -> "; curl --noproxy '*' -s -o /dev/null -w '%{http_code}\n' "http://$P1:8300/healthcheck"
 ```
 
-2. **每 5 秒自动刷新的实时进度看板（同时兼容 W2 985 条与 AgentX 3600s）**：
+2. **一键实时进度看板（推荐，每 5 秒刷新，同时兼容 W2 985 条与 AgentX 3600s）**：
 
 ```bash
-sudo env PATH="/home/miniconda3/bin:$PATH" python3 -c '
-import glob, json, os, time
-while True:
-    cands = sorted(glob.glob("runs/*/*/*/p1"), key=os.path.getmtime)
-    d = cands[-1] if cands else None
-    print("\033[2J\033[H" + time.strftime("%H:%M:%S"), "当前阶段:", d)
-    if d:
-        ev = next((p for p in [d+"/finite-client/events.jsonl", d+"/agentx-client/events.jsonl"] if os.path.exists(p)), None)
-        if ev:
-            sent = done = err = tok = 0; ttfts = []; tpots = []; t0 = None
-            for line in open(ev):
-                try: r = json.loads(line)
-                except Exception: continue
-                e = r.get("event")
-                if e == "send": sent += 1; t0 = t0 or r.get("wall_time")
-                elif e == "done":
-                    done += 1; tok += (r.get("usage") or {}).get("completion_tokens", 0)
-                    if r.get("ttft_s") is not None: ttfts.append(r["ttft_s"])
-                    if r.get("tpot_ms") is not None: tpots.append(r["tpot_ms"])
-                elif e == "error": err += 1
-            el = max(1e-6, time.time() - t0) if t0 else 0
-            tot = "/985" if "finite-client" in ev else ""
-            print(f"进度: 完成 {done}{tot} | 在途 {sent-done-err} | 失败 {err} | 已运行 {el:.0f}s | 均速 {tok/el if el else 0:.1f} tok/s")
-            if ttfts: print(f"延迟: TTFT均值 {sum(ttfts)/len(ttfts):.2f}s | TPOT均值 {sum(tpots)/len(tpots) if tpots else 0:.2f}ms")
-        else:
-            phase = d.split("/")[-2]
-            msg = "校准阶段（加载模型或发送 P→D 探针中）" if phase == "cal" else f"{phase} 阶段：模型加载 / 图编译 / 等待段注册中（尚未开始发请求）"
-            print("状态:", msg)
-        mp = d + "/metrics.jsonl"
-        if os.path.exists(mp):
-            lines = [x for x in open(mp) if x.strip()]
-            if lines:
-                m = json.loads(lines[-1]); ps = [k for k in ("P1","P2","P3") if k in m]
-                pq = {p: int(m[p]["waiting"]) for p in ps}; p_st = sum(m["master"][p+"_segment_allocated_bytes"] for p in ps)
-                d_cap = m["D"]["capacity"]; d_kv = 100*m["D"]["kv_usage"]; d_st = m["master"].get("D_segment_allocated_bytes", 0.0); reg = m["master"]["registered"]
-                print(f"队列/KV: P等待={pq} | D容量等待={d_cap:.0f} | D逻辑KV={d_kv:.1f}% | Store占用: P={p_st:.1f}G D={d_st:.1f}G (注册 {reg:.1f}G)")
-    time.sleep(5)
-'
+sudo bash watch.sh
 ```
+
+会实时显示各节点 HTTP 健康状态（`200` / `DOWN`）、当前组别与阶段（`cal` / `perf` / `blocks`）、W2 完成数/百分比/ETA（或 AgentX 已完成数与时长）、实时输出 `tok/s`、TTFT 均值/P95、TPOT 均值、P/D 队列等待、P 实时前缀命中率、D 逻辑 KV 使用率及 P/D Store 已用容量（按 `Ctrl+C` 退出，不影响测试）。
 
 3. **单独追踪引擎日志、Proxy 日志与 Mooncake Store 指标**：
 
