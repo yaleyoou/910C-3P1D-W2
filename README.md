@@ -453,17 +453,30 @@ sudo bash watch.sh
 
 3. **单独追踪引擎日志、Proxy 日志与 Mooncake Store 指标**：
 
+最简方式直接用辅助脚本 `logs.sh`（自动处理 `sudo` 和远端 SSH，无需手拼引号）：
+
+```bash
+bash logs.sh d        # 远程实时看 D 节点 d.log（加载/sparse池/图编译）
+bash logs.sh p1       # 本机实时看 P1 p.log
+bash logs.sh p2       # 远程实时看 P2 p.log（若启用）
+bash logs.sh p3       # 远程实时看 P3 p.log（若启用）
+bash logs.sh proxy    # 本机实时看 proxy.log
+bash logs.sh store-d  # 远程实时看 D 节点 store-d.log
+```
+
+或手动执行单行命令（在仓库目录下，注意**不要**在 `source` 前面加 `sudo`）：
+
 ```bash
 # P1 引擎加载/推理日志
-tail -f "$(ls -dt runs/*/*/*/p1 | head -1)/logs/p.log"
+sudo bash -c 'tail -f "$(ls -dt runs/*/*/*/p1 | head -1)/logs/p.log"'
 
-# D 节点加载/sparse池/图编译日志（在 P1 上远程查看）
-source cluster.env && ssh "${SSH_D:-$D}" "tail -f \"\$(ls -dt '$PWD'/runs/*/*/*/d | head -1)/logs/d.log\""
+# D 节点加载/sparse池/图编译日志（在 P1 仓库目录下远程查看）
+source cluster.env && ssh -tt "${SSH_D:-$D}" "sudo bash -c 'tail -f \"\$(ls -dt '$PWD'/runs/*/*/*/d | head -1)/logs/d.log\"'"
 
 # Proxy 路由与健康检查日志
-tail -f "$(ls -dt runs/*/*/*/p1 | head -1)/logs/proxy.log"
+sudo bash -c 'tail -f "$(ls -dt runs/*/*/*/p1 | head -1)/logs/proxy.log"'
 
-# Mooncake Master 实时段注册与已用容量
+# Mooncake Master 实时段注册与已用容量（无需 sudo）
 curl --noproxy '*' -fsS "http://$(. ./cluster.env; echo "$P1"):50089/metrics" | grep -E '^(master|segment)_(allocated|total_capacity)_bytes'
 ```
 
