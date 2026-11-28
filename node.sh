@@ -72,10 +72,10 @@ mkdir -p "$(dirname "$output")"; mkdir "$output"; mkdir "$output/logs"
 cp cluster.env cases.tsv "$output/"
 export P1 P2 P3 D IFACE ROLE PHASE CASE TRIAL NODE_IP P_STORE SPARSE D_STORE
 args=(); for var in P1 P2 P3 D IFACE ROLE PHASE CASE TRIAL NODE_IP P_STORE SPARSE D_STORE; do args+=(-e "$var"); done
-docker run -d --name "$NAME" --label experiment=glm52-3p1d --network host --init --shm-size 64g --ulimit memlock=-1:-1 \
+docker run -d --name "$NAME" --label experiment=glm52-3p1d --network host --shm-size 64g --ulimit memlock=-1:-1 \
   "${devices[@]}" "${mounts[@]}" "${args[@]}" \
   -v "$PWD:/deploy:ro" -v "$output:/run-data" -v "$MODEL_DIR:/models/glm-q:ro" \
-  -v "glm52-3p1d-cache-$ROLE:/root/.cache" --entrypoint sleep "$IMAGE" infinity
+  -v "glm52-3p1d-cache-$ROLE:/root/.cache" --entrypoint bash "$IMAGE" -c 'trap "exit 0" TERM INT; while :; do sleep 5 & wait $!; done'
 docker exec "$NAME" python3 /deploy/tools/logger_fix.py
 inside() { docker exec -d "$NAME" bash "/deploy/services/$1.sh"; }
 if [[ $ROLE == p1 ]]; then inside master; fi
