@@ -474,6 +474,26 @@ python3 tools/result.py --markdown runs/{F1,F5,F2,F3,F4,EC1,ES1,EJ1}/r1 > summar
 
 数据完整性以 `request-audit.json`、`overlap.json`、两份 `finite-client/summary.json` 和 per-P 计数为准。旧报告作为比较放在 `evidence/旧1P1D结果.md`。全部四节点指标需由新机器产生。
 
+## 7. AgentX 3600s 零延迟回放（cc-traces-weka-062126-256k）
+
+若要直接复用当前部署的模型、镜像与 `cases.tsv` 配额表，对全量 AgentX 轨迹（`semianalysisai/cc-traces-weka-062126-256k` 的 `traces.jsonl`）做**忽略调用等待时间（零延迟）的 3600s 压测**，只需把下载好的 `traces.jsonl` 放到仓库的 `data/traces.jsonl`（只需放在 P1 节点即可，无需安装 AIPerf）：
+
+```bash
+cd /home/c60040001/yxy/910C-3P1D-W2
+
+# 单组测试（默认 3600s、并发 16 棵根会话树、data/traces.jsonl）：
+bash agentx.sh F1 r1
+
+# 自定义时长与并发（例如 3600s、并发 32 棵会话树）：
+bash agentx.sh F1 r1 3600 32
+
+# 连跑多组配额（全程只输一次 sudo 密码）：
+bash agentx.sh F1,F5,F2,EC1,ES1,EJ1 r1 3600 16
+```
+
+- **回放机制**：完整保留每棵会话树的顺序依赖与并发 subagent 批次，忽略原轨迹的 `t` / `think_time` 等待；按 64-token `hash_ids` 确定性还原共享前缀 token IDs，走 `/v1/completions` 固定输出长度（`out=0` 自动钳位为 `1`）。到 3600s 停止新发请求并自然收尾在途请求（若希望到点立即中断在途请求，前置 `AGENTX_HARD_STOP=1`）。
+- **输出报表**：自动保存单组 `runs/<组>/agentx_<trial>_d3600_c16/perf/p1/result.md`（含收尾总口径）、`result-window.md`（严格 3600s 窗口内口径）、`per-P.json` 及跨组汇总表 `runs/summary_agentx_<trial>_d3600_c16.md`，包含完成请求数、输出 tok/s、TTFT 均值/P95、平均 TPOT、P 平均排队数、D 平均容量等待数、P 合计前缀命中率、P/D Store 平均占用与 D 逻辑 KV 平均使用率。
+
 ## 手动分步启动
 
 四台可分别登录并有普通 sudo 权限时，可在四台分别运行 `sudo bash node.sh up p1 F1 cal r1`、`... up p2 ...`、`... up p3 ...`、`... up d ...`。先在 P1 发起，其他三台随即启动。各节点 `sudo docker exec glm52-3p1d ...` 使用同一个本机容器名。P1 执行 `sudo docker exec glm52-3p1d bash /deploy/bench.sh`。cal/blocks 完成后把 D 的 `/run-data/logs/d-blocks.jsonl` 拷到同阶段 P1 的 `logs/` 下，cal 在 P1 容器执行 `python3 /deploy/tools/check_probe.py /run-data`。每个阶段结束在四台分别执行 `sudo bash node.sh down`。
