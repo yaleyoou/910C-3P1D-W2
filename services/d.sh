@@ -59,7 +59,7 @@ exec vllm serve /models/glm-q \
     --kv-transfer-config '{
         "kv_connector": "SfaRemoteD2HConnector",
         "kv_role": "kv_consumer",
-        "kv_port": 41000,
+        "kv_port": 28000,
         "kv_connector_extra_config": {
             "transfer_backend": "memfabric",
             "memfabric_transfer_protocol": "sdma"
