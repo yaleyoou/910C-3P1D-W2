@@ -20,16 +20,21 @@ if [[ $action == down ]]; then
 fi
 [[ $action == up || $action == check ]]
 ROLE=${2:?p1|p2|p3|d}
-case $ROLE in p1) NODE_IP=$P1; model_override=MODEL_DIR_P1 ;;
-  p2) NODE_IP=$P2; model_override=MODEL_DIR_P2 ;;
-  p3) NODE_IP=$P3; model_override=MODEL_DIR_P3 ;;
-  d) NODE_IP=$D; model_override=MODEL_DIR_D ;; *) exit 2 ;; esac
+case $ROLE in p1) NODE_IP=${P1:-}; model_override=MODEL_DIR_P1 ;;
+  p2) NODE_IP=${P2:-}; model_override=MODEL_DIR_P2 ;;
+  p3) NODE_IP=${P3:-}; model_override=MODEL_DIR_P3 ;;
+  d) NODE_IP=${D:-}; model_override=MODEL_DIR_D ;; *) exit 2 ;; esac
+[[ -n $NODE_IP ]] || { echo "$ROLE: IP is empty in cluster.env" >&2; exit 2; }
 python3 tools/verify_runtime.py
-python3 - "$P1" "$P2" "$P3" "$D" <<'PYIP'
+python3 - "${P1:-}" "${P2:-}" "${P3:-}" "${D:-}" <<'PYIP'
 import ipaddress, sys
-ips = [ipaddress.IPv4Address(s) for s in sys.argv[1:]]
-if len(set(ips)) != 4 or any(ip.is_loopback or ip.is_unspecified or ip.is_multicast for ip in ips):
-    sys.exit("cluster.env: P1/P2/P3/D must be four distinct host IPv4 addresses")
+p1, p2, p3, d = sys.argv[1:5]
+if not p1 or not d:
+    sys.exit("cluster.env: P1 and D must be non-empty IPv4 addresses")
+raw = [s for s in (p1, p2, p3, d) if s]
+ips = [ipaddress.IPv4Address(s) for s in raw]
+if len(set(ips)) != len(ips) or any(ip.is_loopback or ip.is_unspecified or ip.is_multicast for ip in ips):
+    sys.exit("cluster.env: configured P/D hosts must be distinct host IPv4 addresses")
 PYIP
 if [[ $IFACE == auto ]]; then
   IFACE=$(ip -4 -o addr show | awk -v ip="$NODE_IP" '{split($4,a,"/"); if(a[1]==ip){sub(/@.*/,"",$2);print $2}}')

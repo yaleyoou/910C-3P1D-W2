@@ -8,7 +8,7 @@ case=os.environ['CASE']
 phase=os.environ['PHASE']
 assert phase in ('perf','blocks') and os.environ['ROLE']=='p1'
 before=sample()
-for role in ('P1','P2','P3','D'):
+for role in [r for r in ('P1','P2','P3') if os.environ.get(r)]+['D']:
     expected=int(os.environ['D_STORE' if role=='D' else 'P_STORE'])
     actual=before['master'][role+'_segment_total_capacity_bytes']
     assert abs(expected-actual)<1e-6,(role,expected,actual)

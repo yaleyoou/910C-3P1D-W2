@@ -27,7 +27,7 @@ def summarize(run, details=None):
     lo,hi=s['first_send_unix'],s['last_done_unix']
     a=read(perf/'before.json');z=read(perf/'after.json')
     samples=[a]+rows(perf/'metrics.jsonl')+[z]
-    ps=['P1','P2','P3']
+    ps=[p for p in ('P1','P2','P3') if p in a]
     def diff(p,k):
         v=[r[p][k] for r in samples]
         assert all(y>=x for x,y in zip(v,v[1:])),(p,k,'counter reset')
@@ -42,7 +42,8 @@ def summarize(run, details=None):
               'store_GiB':avg(lambda x:x['master'][p+'_segment_allocated_bytes'])} for p in ps}
     g=read(perf/'params.json')
     assert g==read(block/'params.json')
-    result={'组别':g['case'],'D Store / sparse（GiB）':f"{g['ds']} / {g['sparse']}",'总预算 GiB':g['ps']*3+g['ds']+g['sparse'],
+    p_count=g.get('p_count',len(ps))
+    result={'组别':g['case'],'D Store / sparse（GiB）':f"{g['ds']} / {g['sparse']}",'总预算 GiB':g['ps']*p_count+g['ds']+g['sparse'],
       '输出 tok/s':s['output_tokens_per_s'],'TTFT 均值 s':s['ttft_mean_s'],'TTFT P95 s':s['ttft_p95_s'],
       '平均 TPOT ms':s['tpot_mean_ms'],'P 平均排队数（三台合计）':sum(v['queue'] for v in per_p.values()),
       'D 平均容量等待数':avg(lambda x:x['D']['capacity']),'P 合计前缀命中率 %':100*h/q,

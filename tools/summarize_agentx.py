@@ -65,7 +65,7 @@ def summarize_run(run_dir: Path, scope: str = 'total', details_path: Path | None
         s_lo = samples[0]
         s_hi = samples[-1]
 
-    ps = ['P1', 'P2', 'P3']
+    ps = [p for p in ('P1', 'P2', 'P3') if p in before]
     avg = lambda fn: time_mean(samples, lo, hi, fn)
     q_total = sum(s_hi[p]['query'] - s_lo[p]['query'] for p in ps)
     h_total = sum((s_hi[p]['local_hit'] - s_lo[p]['local_hit']) + (s_hi[p]['ext_hit'] - s_lo[p]['ext_hit']) for p in ps)
@@ -85,10 +85,11 @@ def summarize_run(run_dir: Path, scope: str = 'total', details_path: Path | None
         details_path.write_text(json.dumps(per_p, indent=2) + '\n', encoding='utf-8')
 
     in_win = s['in_window']
+    p_count = g.get('p_count', len(ps))
     return {
         '组别': g['case'],
         'D Store / sparse（GiB）': f"{g['ds']} / {g['sparse']}",
-        '总预算 GiB': g['ps'] * 3 + g['ds'] + g['sparse'],
+        '总预算 GiB': g['ps'] * p_count + g['ds'] + g['sparse'],
         '并发 c': s['concurrency'],
         '时长 s': int(round(s['configured_duration_s'])),
         '3600s内完成请求': in_win['requests_completed'],

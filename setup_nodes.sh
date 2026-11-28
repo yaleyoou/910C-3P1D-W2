@@ -15,8 +15,14 @@ fi
 [[ -s data/checkpoints/W2/frozen/manifest.json ]] || { echo "Missing unpacked W2 data; run tar -xzf w2-data.tar.gz -C data first" >&2; exit 1; }
 python3 tools/verify_runtime.py
 
-roles=(p1 p2 p3 d)
-hosts=(localhost "${SSH_P2:-$P2}" "${SSH_P3:-$P3}" "${SSH_D:-$D}")
+roles=(p1)
+hosts=(localhost)
+if [[ -n ${P2:-} ]]; then roles+=(p2); hosts+=("${SSH_P2:-$P2}"); fi
+if [[ -n ${P3:-} ]]; then roles+=(p3); hosts+=("${SSH_P3:-$P3}"); fi
+roles+=(d)
+hosts+=("${SSH_D:-$D}")
+n_nodes=${#roles[@]}
+d_idx=$((n_nodes - 1))
 dkr=(docker)
 [[ -z ${DOCKER_HOST:-} ]] || dkr=(docker -H "$DOCKER_HOST")
 on() {
@@ -24,16 +30,16 @@ on() {
   if [[ $i == 0 ]]; then "$@"; else ssh -o BatchMode=yes -o ConnectTimeout=8 "${hosts[$i]}" "$(printf '%q ' "$@")"; fi
 }
 
-for i in 1 2 3; do
+for ((i=1; i<n_nodes; i++)); do
   if ! ssh -o BatchMode=yes -o ConnectTimeout=8 "${hosts[$i]}" true 2>/dev/null; then
     echo "Passwordless SSH from P1 to ${roles[$i]} (${hosts[$i]}) failed." >&2
-    echo "Configure SSH keys for $(whoami) from P1 to ${hosts[1]}, ${hosts[2]}, ${hosts[3]} first." >&2
+    echo "Configure SSH keys for $(whoami) from P1 to remote nodes first." >&2
     exit 1
   fi
 done
 
 NEED_SUDO_PASS=0
-for i in 0 1 2 3; do
+for ((i=0; i<n_nodes; i++)); do
   if ! on "$i" sh -c '[ "$(id -u)" = 0 ] || sudo -n true' >/dev/null 2>&1; then
     NEED_SUDO_PASS=1
     break
@@ -42,7 +48,7 @@ done
 SUDO_PASS=${SUDO_PASS:-}
 if ((NEED_SUDO_PASS)) && [[ -z $SUDO_PASS ]]; then
   if [[ -r /dev/tty ]]; then
-    read -rsp "Enter sudo password for $(whoami) (shared across 4 nodes): " SUDO_PASS </dev/tty
+    read -rsp "Enter sudo password for $(whoami) (shared across $n_nodes nodes): " SUDO_PASS </dev/tty
     echo >/dev/tty
   else
     read -rsp "Enter sudo password for $(whoami): " SUDO_PASS
@@ -71,19 +77,19 @@ on_root() {
   fi
 }
 
-echo "[1/4] Verifying sudo access sequentially on 4 nodes..."
-for i in 0 1 2 3; do
+echo "[1/4] Verifying sudo access sequentially on $n_nodes nodes..."
+for ((i=0; i<n_nodes; i++)); do
   if ! on_root "$i" true; then
     echo "sudo authentication failed on ${roles[$i]} (${hosts[$i]}); aborting immediately to prevent account lockout." >&2
     exit 1
   fi
 done
 
-echo "[2/4] Syncing $base to P2, P3, D (if independent disks)..."
+echo "[2/4] Syncing $base to remote nodes (if independent disks)..."
 sentinel="$base/.fs-probe.$$"
 trap 'rm -f -- "$sentinel"' EXIT
 : > "$sentinel"
-for i in 1 2 3; do
+for ((i=1; i<n_nodes; i++)); do
   if on "$i" test -e "$sentinel"; then
     echo "  ${roles[$i]} (${hosts[$i]}): shared filesystem detected, skipping rsync"
   else
@@ -100,9 +106,9 @@ for i in 1 2 3; do
 done
 rm -f -- "$sentinel"
 
-echo "[3/4] Loading Docker image on all 4 nodes (in parallel)..."
+echo "[3/4] Loading Docker image on all $n_nodes nodes (in parallel)..."
 pids=()
-for i in 0 1 2 3; do
+for ((i=0; i<n_nodes; i++)); do
   (
     if on_root "$i" "${dkr[@]}" image inspect "$IMAGE" >/dev/null 2>&1; then
       echo "  ${roles[$i]}: Docker image already loaded"
@@ -118,8 +124,8 @@ for pid in "${pids[@]}"; do wait "$pid" || status=1; done
 test "$status" = 0
 
 echo "[4/4] Enabling NPU device-share on D and running preflight checks..."
-on_root 3 bash -c 'for card in {0..7}; do for chip in 0 1; do printf "y\n" | /usr/local/bin/npu-smi set -t device-share -i "$card" -c "$chip" -d 1 >/dev/null; done; done'
-for i in 0 1 2 3; do
+on_root "$d_idx" bash -c 'for card in {0..7}; do for chip in 0 1; do printf "y\n" | /usr/local/bin/npu-smi set -t device-share -i "$card" -c "$chip" -d 1 >/dev/null; done; done'
+for ((i=0; i<n_nodes; i++)); do
   on_root "$i" bash "$base/node.sh" check "${roles[$i]}" F1
 done
-echo "All 4 nodes verified and ready! Start benchmark inside tmux with: bash case.sh F1 r1 (or: bash case.sh all r1)"
+echo "All $n_nodes nodes verified and ready! Start benchmark with: bash case.sh F1 r1 (or: bash agentx.sh F1 r1)"

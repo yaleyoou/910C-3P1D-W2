@@ -23,14 +23,17 @@ allow_warm = os.environ.get('AGENTX_ALLOW_WARM', '0') == '1'
 assert os.environ['ROLE'] == 'p1'
 assert Path(trace_rel).is_file(), f'Trace file not found inside container: {trace_rel}'
 
-# Wait up to 300s for all 4 nodes' Mooncake Store segments (including delayed store_d) to register
+active_p = [r for r in ('P1', 'P2', 'P3') if os.environ.get(r)]
+active_roles = active_p + ['D']
+
+# Wait up to 300s for active nodes' Mooncake Store segments (including delayed store_d) to register
 deadline = time.time() + 300
 last_err = None
 while time.time() < deadline:
     try:
         m = scrape('master')
         ok = True
-        for role in ('P1', 'P2', 'P3', 'D'):
+        for role in active_roles:
             exp = int(os.environ['D_STORE' if role == 'D' else 'P_STORE'])
             got = m[role + '_segment_total_capacity_bytes']
             if abs(got - exp) >= 1e-6:
@@ -48,9 +51,10 @@ else:
 (p / 'params.json').write_text(json.dumps({
     'case': os.environ['CASE'],
     'ps': int(os.environ['P_STORE']),
+    'p_count': len(active_p),
     'ds': int(os.environ['D_STORE']),
     'sparse': int(os.environ['SPARSE']),
-    'hosts': [os.environ[k] for k in ('P1', 'P2', 'P3', 'D')],
+    'hosts': [os.environ[k] for k in active_roles],
     'duration_s': float(duration),
     'concurrency': int(concurrency),
     'traces': trace_rel,

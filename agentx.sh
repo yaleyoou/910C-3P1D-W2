@@ -49,8 +49,14 @@ for group in "${groups[@]}"; do
   }
 done
 
-roles=(p1 p2 p3 d)
-hosts=(localhost "${SSH_P2:-$P2}" "${SSH_P3:-$P3}" "${SSH_D:-$D}")
+roles=(p1)
+hosts=(localhost)
+p_addrs=("$P1:8100")
+if [[ -n ${P2:-} ]]; then roles+=(p2); hosts+=("${SSH_P2:-$P2}"); p_addrs+=("$P2:8100"); fi
+if [[ -n ${P3:-} ]]; then roles+=(p3); hosts+=("${SSH_P3:-$P3}"); p_addrs+=("$P3:8100"); fi
+roles+=(d)
+hosts+=("${SSH_D:-$D}")
+n_nodes=${#roles[@]}
 name=glm52-3p1d
 dkr=(docker)
 [[ -z ${DOCKER_HOST:-} ]] || dkr=(docker -H "$DOCKER_HOST")
@@ -59,7 +65,7 @@ on() {
   local i=$1; shift
   if [[ $i == 0 ]]; then "$@"; else ssh -o BatchMode=yes -o ConnectTimeout=8 "${hosts[$i]}" "$(printf '%q ' "$@")"; fi
 }
-for i in 1 2 3; do
+for ((i=1; i<n_nodes; i++)); do
   if ! ssh -o BatchMode=yes -o ConnectTimeout=8 "${hosts[$i]}" true 2>/dev/null; then
     echo "Passwordless SSH from P1 to ${roles[$i]} (${hosts[$i]}) failed." >&2
     exit 1
@@ -67,7 +73,7 @@ for i in 1 2 3; do
 done
 
 NEED_SUDO_PASS=0
-for i in 0 1 2 3; do
+for ((i=0; i<n_nodes; i++)); do
   if ! on "$i" sh -c '[ "$(id -u)" = 0 ] || sudo -n true' >/dev/null 2>&1; then
     NEED_SUDO_PASS=1
     break
@@ -76,7 +82,7 @@ done
 SUDO_PASS=${SUDO_PASS:-}
 if ((NEED_SUDO_PASS)) && [[ -z $SUDO_PASS ]]; then
   if [[ -r /dev/tty ]]; then
-    read -rsp "Enter sudo password for $(whoami) (shared across 4 nodes): " SUDO_PASS </dev/tty
+    read -rsp "Enter sudo password for $(whoami) (shared across $n_nodes nodes): " SUDO_PASS </dev/tty
     echo >/dev/tty
   else
     read -rsp "Enter sudo password for $(whoami): " SUDO_PASS
@@ -124,7 +130,7 @@ ready() {
   echo "Readiness timed out: $url" >&2; return 1
 }
 
-for i in 0 1 2 3; do
+for ((i=0; i<n_nodes; i++)); do
   if ! on_root "$i" true; then
     echo "sudo authentication failed on ${roles[$i]} (${hosts[$i]}); aborting." >&2
     exit 1
@@ -133,8 +139,8 @@ done
 
 run_tag="agentx_${trial}_d${duration}_c${concurrency}"
 for group in "${groups[@]}"; do
-  echo "=== Starting AgentX group $group (tag=$run_tag, duration=${duration}s, c=${concurrency}) ==="
-  for i in 0 1 2 3; do
+  echo "=== Starting AgentX group $group (tag=$run_tag, topology=$((n_nodes-1))P1D, duration=${duration}s, c=${concurrency}) ==="
+  for ((i=0; i<n_nodes; i++)); do
     on "$i" test -s "$base/node.sh"
     on "$i" test -s "$base/cluster.env"
     local_hash=$(sha256sum cluster.env cases.tsv | cut -d' ' -f1)
@@ -145,10 +151,10 @@ for group in "${groups[@]}"; do
   done
 
   pids=()
-  for i in 0 1 2 3; do on_root "$i" bash "$base/node.sh" up "${roles[$i]}" "$group" perf "$run_tag" & pids+=("$!"); done
+  for ((i=0; i<n_nodes; i++)); do on_root "$i" bash "$base/node.sh" up "${roles[$i]}" "$group" perf "$run_tag" & pids+=("$!"); done
   status=0; for pid in "${pids[@]}"; do wait "$pid" || status=1; done; test "$status" = 0
 
-  for addr in "$P1:8100" "$P2:8100" "$P3:8100" "$D:8200"; do ready "http://$addr/health"; done
+  for addr in "${p_addrs[@]}" "$D:8200"; do ready "http://$addr/health"; done
   ready "http://$P1:8300/healthcheck"
 
   as_root "${dkr[@]}" exec \
@@ -158,7 +164,8 @@ for group in "${groups[@]}"; do
     -e "AGENTX_HARD_STOP=${AGENTX_HARD_STOP:-0}" \
     "$name" python3 /deploy/tools/bench_agentx.py
 
-  for i in 1 2 3 0; do on_root "$i" bash "$base/node.sh" down; done
+  for ((i=1; i<n_nodes; i++)); do on_root "$i" bash "$base/node.sh" down; done
+  on_root 0 bash "$base/node.sh" down
 
   done_runs=()
   seen=" "

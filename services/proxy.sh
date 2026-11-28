@@ -8,11 +8,15 @@ export no_proxy='*' NO_PROXY='*'
 mkdir -p /run-data/logs
 exec > /run-data/logs/proxy.log 2>&1
 
+p_hosts=(); p_ports=()
+for h in "${P1:-}" "${P2:-}" "${P3:-}"; do
+  if [[ -n $h ]]; then p_hosts+=("$h"); p_ports+=(8100); fi
+done
 exec python3 /deploy/tools/proxy_reliable.py \
-    --host $NODE_IP \
+    --host "$NODE_IP" \
     --port 8300 \
-    --prefiller-hosts "$P1" "$P2" "$P3" \
-    --prefiller-ports 8100 8100 8100 \
-    --decoder-hosts $D \
+    --prefiller-hosts "${p_hosts[@]}" \
+    --prefiller-ports "${p_ports[@]}" \
+    --decoder-hosts "$D" \
     --decoder-ports 8200 \
     --max-retries 1

@@ -8,7 +8,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-roles = ['P1', 'P2', 'P3', 'D']
+roles = [s for s in ('P1', 'P2', 'P3', 'D') if os.environ.get(s)]
 ip = {s: os.environ[s] for s in roles}
 endpoints = {s: f'http://{ip[s]}:{8200 if s == "D" else 8100}/metrics' for s in roles}
 endpoints['master'] = f'http://{ip["P1"]}:50089/metrics'
