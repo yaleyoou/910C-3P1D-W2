@@ -285,7 +285,8 @@ async def run_replay(args: argparse.Namespace) -> None:
                     log_event('root_done', root_id=root_id, slot=slot)
                 else:
                     log_event('root_stopped', root_id=root_id, slot=slot)
-                    break
+                    if time_up():
+                        break
 
         workers = [asyncio.create_task(worker(s)) for s in range(args.concurrency)]
         try:

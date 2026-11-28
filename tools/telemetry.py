@@ -43,11 +43,29 @@ def scrape(role):
     if role=='D':
         kv=values(data,'vllm:kv_cache_usage_perc') or values(data,'vllm:gpu_cache_usage_perc')
         if not kv: raise ValueError('missing vllm:kv_cache_usage_perc on D')
+        dp_run=values(data,'vllm:num_requests_running')
+        dp_wait=values(data,'vllm:num_requests_waiting')
+        dp_cap=values(data,'vllm:num_requests_waiting_by_reason','reason="capacity"')
         return {'capacity':required(data,'vllm:num_requests_waiting_by_reason','reason="capacity"'),
-                'kv_usage':sum(kv)/len(kv)}
-    return {key:required(data,'vllm:'+name) for key,name in {
+                'kv_usage':sum(kv)/len(kv),
+                'running':sum(dp_run),
+                'waiting':sum(dp_wait),
+                'dp_running':dp_run,
+                'dp_waiting':dp_wait,
+                'dp_capacity':dp_cap,
+                'dp_kv_usage':kv}
+    res={key:required(data,'vllm:'+name) for key,name in {
         'waiting':'num_requests_waiting','query':'prefix_cache_queries_total',
         'local_hit':'prefix_cache_hits_total','ext_hit':'external_prefix_cache_hits_total'}.items()}
+    p_run=values(data,'vllm:num_requests_running')
+    p_wait=values(data,'vllm:num_requests_waiting')
+    p_kv=values(data,'vllm:kv_cache_usage_perc') or values(data,'vllm:gpu_cache_usage_perc')
+    res['running']=sum(p_run)
+    res['kv_usage']=(sum(p_kv)/len(p_kv)) if p_kv else 0.0
+    res['dp_running']=p_run
+    res['dp_waiting']=p_wait
+    res['dp_kv_usage']=p_kv
+    return res
 
 def sample():
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:

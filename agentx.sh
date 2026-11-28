@@ -57,6 +57,7 @@ if [[ -n ${P3:-} ]]; then roles+=(p3); hosts+=("${SSH_P3:-$P3}"); p_addrs+=("$P3
 roles+=(d)
 hosts+=("${SSH_D:-$D}")
 n_nodes=${#roles[@]}
+d_idx=$((n_nodes - 1))
 name=glm52-3p1d
 dkr=(docker)
 [[ -z ${DOCKER_HOST:-} ]] || dkr=(docker -H "$DOCKER_HOST")
@@ -164,10 +165,19 @@ for group in "${groups[@]}"; do
     -e "AGENTX_HARD_STOP=${AGENTX_HARD_STOP:-0}" \
     "$name" python3 /deploy/tools/bench_agentx.py
 
+  pout="$base/runs/$group/$run_tag/perf/p1"
+  on_root "$d_idx" "${dkr[@]}" exec "$name" bash -c \
+    'grep -E "Available KV cache memory|Sparse KV offload|SFAPDRD2H D-side|SFAPDRD2H D DP topology|dram_size_per_dp_GB|data_parallel_size|tensor_parallel_size|NPU KV cache usage" /run-data/logs/d.log 2>/dev/null || true' \
+    | write_root "$pout/d-kv-summary.log" || true
+
   for ((i=1; i<n_nodes; i++)); do on_root "$i" bash "$base/node.sh" down; done
   on_root 0 bash "$base/node.sh" down
 
   as_root chmod -R a+rX "$base/runs" 2>/dev/null || true
+  python3 tools/export_detailed_metrics.py "$pout" --dlog "$pout/d-kv-summary.log" --markdown | write_root "$pout/detailed-report.md" || true
+  python3 tools/export_detailed_metrics.py "$pout" --scope window --dlog "$pout/d-kv-summary.log" --markdown | write_root "$pout/detailed-report-window.md" || true
+  python3 tools/export_detailed_metrics.py "$pout" --dlog "$pout/d-kv-summary.log" --json | write_root "$pout/detailed-metrics.json" || true
+  python3 tools/export_detailed_metrics.py "$pout" --dlog "$pout/d-kv-summary.log" --csv | write_root "$pout/detailed-metrics.csv" || true
   done_runs=()
   seen=" "
   for g in F1 F5 F2 F3 F4 EC1 ES1 EJ1 $(awk '$1 !~ /^#/ && $1 != "case" {print $1}' cases.tsv); do
@@ -180,7 +190,8 @@ for group in "${groups[@]}"; do
     python3 tools/summarize_agentx.py "${done_runs[@]}" | write_root "$base/runs/summary_${run_tag}.csv"
     python3 tools/summarize_agentx.py --markdown "${done_runs[@]}" | write_root "$base/runs/summary_${run_tag}.md"
   fi
-  echo "Result MD:  $base/runs/$group/$run_tag/perf/p1/result.md"
-  echo "Window MD:  $base/runs/$group/$run_tag/perf/p1/result-window.md"
-  echo "Summary MD: $base/runs/summary_${run_tag}.md"
+  echo "Result MD:    $pout/result.md"
+  echo "Window MD:    $pout/result-window.md"
+  echo "Detailed MD:  $pout/detailed-report.md"
+  echo "Summary MD:   $base/runs/summary_${run_tag}.md"
 done

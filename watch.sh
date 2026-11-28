@@ -114,13 +114,16 @@ while True:
                 m = json.loads(mlines[-1])
                 ps = [k for k in ("P1", "P2", "P3") if k in m]
                 pq = " ".join(f"{p}={int(m[p]['waiting'])}" for p in ps)
+                pr = " ".join(f"{p}={int(m[p].get('running', 0))}" for p in ps)
+                d_run = int(m["D"].get("running", 0))
                 q_tot = sum(m[p]["query"] - first[p]["query"] for p in ps)
                 h_tot = sum((m[p]["local_hit"] - first[p]["local_hit"]) + (m[p]["ext_hit"] - first[p]["ext_hit"]) for p in ps)
                 hit_s = f"{100.0*h_tot/q_tot:.1f}%" if q_tot > 0 else "-"
                 p_st = sum(m["master"][p + "_segment_allocated_bytes"] for p in ps)
                 d_st = m["master"].get("D_segment_allocated_bytes", 0.0)
                 reg = m["master"]["registered"]
-                lines.append(f"P/D 队列: P等待({pq}) | P前缀命中率 {hit_s} | D容量等待={m['D']['capacity']:.0f} | D逻辑KV={100*m['D']['kv_usage']:.1f}%")
+                lines.append(f"Running : P运行({pr}) | D运行={d_run} | D逻辑KV={100*m['D']['kv_usage']:.1f}%")
+                lines.append(f"P/D 队列: P等待({pq}) | P前缀命中率 {hit_s} | D容量等待={m['D']['capacity']:.0f}")
                 lines.append(f"Store   : P已用={p_st:.1f} GiB | D已用={d_st:.1f} GiB | 总注册={reg:.1f} GiB")
 
     sys.stdout.write("\033[2J\033[H" + "\n".join(lines) + "\n")

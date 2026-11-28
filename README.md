@@ -625,9 +625,20 @@ bash agentx.sh F1 r1 3600 32
 bash agentx.sh F1,F5,F2,EC1,ES1,EJ1 r1 3600 16
 ```
 
-- **实时监控与停服**：同样直接用 `sudo bash watch.sh` 看实时已完成请求数/吞吐/TTFT/TPOT/P&D 排队/Store 占用，用 `bash logs.sh d` 看日志，用 `bash stop.sh` 一键停服。
-- **回放机制**：完整保留每棵会话树的顺序依赖与并发 subagent 批次，忽略原轨迹的 `t` / `think_time` 等待；按 64-token `hash_ids` 确定性还原共享前缀 token IDs，走 `/v1/completions` 固定输出长度（`out=0` 自动钳位为 `1`）。到 3600s 停止新发请求并自然收尾在途请求（若希望到点立即中断在途请求，前置 `AGENTX_HARD_STOP=1`）。
-- **输出报表**：自动保存单组 `runs/<组>/agentx_<trial>_d3600_c16/perf/p1/result.md`（含收尾总口径）、`result-window.md`（严格 3600s 窗口内口径）、`per-P.json` 及跨组汇总表 `runs/summary_agentx_<trial>_d3600_c16.md`，包含完成请求数、输出 tok/s、TTFT 均值/P95、平均 TPOT、P 平均排队数、D 平均容量等待数、P 合计前缀命中率、P/D Store 平均占用与 D 逻辑 KV 平均使用率。
+- **实时监控与停服**：同样直接用 `sudo bash watch.sh` 看实时已完成请求数/吞吐/TTFT/TPOT/P&D Running Batch 与排队/Store 占用，用 `bash logs.sh d` 看日志，用 `bash stop.sh` 一键停服。
+- **回放机制**：完整保留每棵会话树的顺序依赖与并发 subagent 批次，忽略原轨迹的 `t` / `think_time` 等待（等价 `--ignore-trace-delays`）；按 64-token `hash_ids` 确定性还原共享前缀 token IDs，走 `/v1/completions` 固定输出长度（`out=0` 自动钳位为 `1`）。到设定时长（如 3600s 或 7200s）停止新发请求并自然收尾在途请求（若希望到点立即中断在途请求，前置 `AGENTX_HARD_STOP=1`）。
+- **输出报表与全指标导出**：
+  - 每次运行结束后自动生成 `result.md`（含收尾）、`result-window.md`（严格窗内）、`per-P.json`、跨组汇总 `runs/summary_agentx_*.md`，以及完整分项报告 **`detailed-report.md`** / **`detailed-metrics.csv`** / **`detailed-metrics.json`**（含吞吐 Thpt、TTFT/TPOT/E2E 全分位、客户端在途 BS、P/D 实际 Running Batch、P/D 排队、本地/Store 命中率拆解、各 DP 负载均衡、D 节点 Indexer K HBM 与 DRAM 主 KV 精确均值/峰值占用）。
+  - 也可随时手动导出单组或多组横向对比表（同时支持历史跑过的 W2 和 AgentX 日志）：
+    ```bash
+    # 单组详细报告（若本地缺 d-kv-summary.log，加 --fetch-dlog 自动从 D 节点拉取）
+    python3 tools/export_detailed_metrics.py runs/DP4_128/agentx_r1_d7200_c32/perf/p1 --markdown
+    # 多组横向对比（Markdown 或 CSV）
+    python3 tools/export_detailed_metrics.py runs/F1/r6 runs/DP4_128/agentx_r1_d7200_c32/perf/p1 --compare
+    python3 tools/export_detailed_metrics.py runs/F1/r6 runs/DP4_128/agentx_r1_d7200_c32/perf/p1 --csv > compare.csv
+    # 单独分析某轮 D 节点的 Indexer K HBM 容量与跑满所需主 KV DRAM
+    python3 tools/analyze_indexer_kv.py --run F1/r6/perf
+    ```
 
 ## 手动分步启动
 

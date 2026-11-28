@@ -149,6 +149,11 @@ for group in "${groups[@]}"; do
       python3 tools/clock_check.py "${hosts[$d_idx]}" /dev/stdout | write_root "$out/clock-before.json"
     fi
     as_root "${dkr[@]}" exec "$name" bash /deploy/bench.sh
+    if [[ $phase == perf ]]; then
+      on_root "$d_idx" "${dkr[@]}" exec "$name" bash -c \
+        'grep -E "Available KV cache memory|Sparse KV offload|SFAPDRD2H D-side|SFAPDRD2H D DP topology|dram_size_per_dp_GB|data_parallel_size|tensor_parallel_size|NPU KV cache usage" /run-data/logs/d.log 2>/dev/null || true' \
+        | write_root "$out/d-kv-summary.log" || true
+    fi
     if [[ $phase != perf ]]; then
       dlog "$out/logs/d-blocks.jsonl"
     fi
@@ -165,6 +170,9 @@ for group in "${groups[@]}"; do
     pout="$base/runs/$group/$trial/perf/p1"
     python3 tools/result.py --perf-only "$base/runs/$group/$trial" --details "$pout/per-P.json" | write_root "$pout/result.csv"
     python3 tools/result.py --perf-only --markdown "$base/runs/$group/$trial" | write_root "$pout/result.md"
+    python3 tools/export_detailed_metrics.py "$pout" --dlog "$pout/d-kv-summary.log" --markdown | write_root "$pout/detailed-report.md" || true
+    python3 tools/export_detailed_metrics.py "$pout" --dlog "$pout/d-kv-summary.log" --json | write_root "$pout/detailed-metrics.json" || true
+    python3 tools/export_detailed_metrics.py "$pout" --dlog "$pout/d-kv-summary.log" --csv | write_root "$pout/detailed-metrics.csv" || true
     cat "$pout/result.md"
     done_runs=()
     seen=" "
