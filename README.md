@@ -562,13 +562,15 @@ for g in F5 F2 F3 F4 EC1 ES1 EJ1; do bash case.sh "$g" r1 || break; done
   - 单组覆盖：也可在 `cases.tsv` 某一行末尾追加可选第 4 列 `P_store_GiB`（不填则使用 `cluster.env` 的 `P_STORE`）。
 - **D Store（D 节点 Mooncake Store，单位 GiB）**：
   - 在 `cases.tsv` 第 2 列设置（`0` 表示不启动 D Store donor；`> 0` 时建议取 16 的整数倍，且 D 节点需按第 1 节开启 16 个 die 的 `device-share`）。
-- **D Sparse KV Pool（D 节点 `dram_size_per_dp_GB`，单位 GiB）与 D 节点 DP Attention（`D_DP`）**：
+- **D Sparse KV Pool（D 节点 `dram_size_per_dp_GB`，单位 GiB）与 P/D 节点 DP Attention（`P_DP` / `D_DP`）**：
   - 在 `cases.tsv` 第 3 列设置**每个 DP 组**的 sparse 池大小（`dram_size_per_dp_GB`）。
-  - 默认 `cluster.env` 中 `D_DP=1`（即 `DP1 × TP16 × EP16`）：受 4 TiB MemFabric 补丁在 TP16 下的虚地址上限约束，**单池有效上限为 `256` GiB**（`> 256` 会被拦截）。
-  - 若要在 D 上开启 **DP Attention（如 `D_DP=4`，即 `DP4 × TP4 × EP16`，每 DP 配 `128 GiB`、整机合计 `128×4 = 512 GiB`）**：
-    1. 在 `cluster.env` 改 `D_DP=4`（支持 `1 / 2 / 4`，D 侧 TP 自动切为 `16 / D_DP`，EP 保持 `16`，每 DP 虚地址上限自动放宽至 `4096 / D_TP` GiB）；
-    2. 在 `cases.tsv` 选择或新增第 3 列为 `128` 的组（如新增 `DP4_128	0	128` 表示 `D Store=0`、`D sparse=128×4=512 GiB`；或用现有 `F3` 的 `64 / 128×4`）；
-    3. 运行 `bash sync_code.sh` 同步到所有节点后即可用 `bash case.sh DP4_128 r1` 或 `bash agentx.sh DP4_128 r1` 启动（总预算自动按 `活跃 P 台数 × P_STORE + D_store + D_sparse × D_DP` 统计，且需确保 `D_store + D_sparse × D_DP` 不超过 D 主机可用物理内存）。
+  - 默认 `cluster.env` 中 `P_DP=1`、`D_DP=1`（均为 `DP1 × TP16 × EP16`）：受 4 TiB MemFabric 补丁在 TP16 下的虚地址上限约束，**单池有效上限为 `256` GiB**（`> 256` 会被拦截）。
+  - 若要修改 P/D 的 DP Attention（例如 **`P_DP=2` 即 `DP2 × TP8 × EP16`，`D_DP=4` 即 `DP4 × TP4 × EP16`**，每 DP 配 `128` 或 `256 GiB`、整机合计 `512` / `1024 GiB`）：
+    1. 在 `cluster.env` 设置 `P_DP=2`、`D_DP=4`（支持 `1 / 2 / 4`，TP 自动切为 `16 / DP`，EP 保持 `16`，D 侧每 DP 虚地址上限自动放宽至 `4096 / D_TP` GiB）；
+    2. 在 `cases.tsv` 选择或新增对应组（如新增 `DP4_256	0	256` 表示 `D Store=0`、`D sparse=256×4=1024 GiB`，或 `DP4_128	0	128` 表示 `128×4=512 GiB`）；
+    3. 运行 `bash sync_code.sh` 同步到所有节点后启动：
+       - **只跑一次 `perf`（跳过 `cal` 和 `blocks`）**：`bash case.sh DP4_256 r1 perf`（W2 985 条）或 `bash agentx.sh DP4_256 r1 3600 32`（AgentX 本身就只跑一次 `perf`）；
+       - 启动或跑完后可运行 `python3 tools/analyze_indexer_kv.py` 查看 D 节点实测 HBM Indexer K 容量与满载所需主 KV 大小，确认瓶颈在 HBM 还是 DRAM。
   - 示例：在 `cases.tsv` 新增一行 `CUSTOM1	32	224	80`（表示 `D Store=32 GiB`、`D sparse=224 GiB`、每台 `P Store=80 GiB`），运行 `bash sync_code.sh` 同步后直接执行 `bash case.sh CUSTOM1 r1`。
 
 ## 6. 取结果（CSV 与 17 列原版 Markdown 表）

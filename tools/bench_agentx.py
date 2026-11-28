@@ -54,6 +54,7 @@ else:
     'p_count': len(active_p),
     'ds': int(os.environ['D_STORE']),
     'sparse': int(os.environ['SPARSE']),
+    'p_dp': int(os.environ.get('P_DP', '1')),
     'd_dp': int(os.environ.get('D_DP', '1')),
     'hosts': [os.environ[k] for k in active_roles],
     'duration_s': float(duration),

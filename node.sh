@@ -56,6 +56,9 @@ mounts=()
 for path in /usr/local/bin/npu-smi /etc/hccn.conf /etc/ascend_install.info /usr/local/Ascend/driver /usr/local/Ascend/firmware /usr/local/dcmi; do
   [[ -e $path ]] || { echo "$ROLE: missing host mount $path" >&2; exit 1; }; mounts+=(-v "$path:$path:ro")
 done
+P_DP=${P_DP:-1}
+case $P_DP in 1|2|4|8|16) ;; *) echo "cluster.env: P_DP=$P_DP must divide 16 (1/2/4/8/16)" >&2; exit 1 ;; esac
+P_TP=$((16 / P_DP))
 D_DP=${D_DP:-1}
 case $D_DP in 1|2|4|8|16) ;; *) echo "cluster.env: D_DP=$D_DP must divide 16 (1/2/4/8/16)" >&2; exit 1 ;; esac
 D_TP=$((16 / D_DP))
@@ -72,7 +75,11 @@ if [[ -n ${3:-} ]]; then
     fi
   fi
 fi
-echo "$ROLE: $NODE_IP on $IFACE, $MODEL_DIR -> /models/glm-q$([[ $ROLE == d ]] && echo " (D_DP=$D_DP D_TP=$D_TP)")"
+if [[ $ROLE == d ]]; then
+  echo "$ROLE: $NODE_IP on $IFACE, $MODEL_DIR -> /models/glm-q (D_DP=$D_DP D_TP=$D_TP EP=16)"
+else
+  echo "$ROLE: $NODE_IP on $IFACE, $MODEL_DIR -> /models/glm-q (P_DP=$P_DP P_TP=$P_TP EP=16)"
+fi
 [[ $action != check ]] || exit 0
 CASE=${3:?F1}; PHASE=${4:?cal|perf|blocks}; TRIAL=${5:?r1}
 case $PHASE in cal|perf|blocks) ;; *) exit 2 ;; esac
@@ -81,8 +88,8 @@ output="$PWD/runs/$CASE/$TRIAL/$PHASE/$ROLE"
 mkdir -p "$(dirname "$output")"; mkdir "$output"; mkdir "$output/logs"
 chmod a+rX "$PWD/runs" "$PWD/runs/$CASE" "$PWD/runs/$CASE/$TRIAL" "$PWD/runs/$CASE/$TRIAL/$PHASE" "$output" "$output/logs" 2>/dev/null || true
 cp cluster.env cases.tsv "$output/"
-export P1 P2 P3 D IFACE ROLE PHASE CASE TRIAL NODE_IP P_STORE SPARSE D_STORE D_DP
-args=(); for var in P1 P2 P3 D IFACE ROLE PHASE CASE TRIAL NODE_IP P_STORE SPARSE D_STORE D_DP; do args+=(-e "$var"); done
+export P1 P2 P3 D IFACE ROLE PHASE CASE TRIAL NODE_IP P_STORE SPARSE D_STORE P_DP D_DP
+args=(); for var in P1 P2 P3 D IFACE ROLE PHASE CASE TRIAL NODE_IP P_STORE SPARSE D_STORE P_DP D_DP; do args+=(-e "$var"); done
 docker run -d --name "$NAME" --label experiment=glm52-3p1d --network host --shm-size 64g --ulimit memlock=-1:-1 \
   "${devices[@]}" "${mounts[@]}" "${args[@]}" \
   -v "$PWD:/deploy:ro" -v "$output:/run-data" -v "$MODEL_DIR:/models/glm-q:ro" \

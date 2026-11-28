@@ -35,13 +35,20 @@ mkdir -p /run-data/logs
 source /deploy/upgrades/memfabric/enable_4t.sh
 exec > /run-data/logs/p.log 2>&1
 
+P_DP=${P_DP:-1}
+P_TP=$((16 / P_DP))
+dp_args=()
+if ((P_DP > 1)); then
+  dp_args=(--data-parallel-address "$NODE_IP" --data-parallel-rpc-port 29540)
+fi
 exec vllm serve /models/glm-q \
     --host $NODE_IP \
     --port 8100 \
     --served-model-name glm-5 \
     --additional-config '{"ascend_log_path": "/dev/shm/glm52-ascend-logs"}' \
-    --tensor-parallel-size 16 \
-    --data-parallel-size 1 \
+    --tensor-parallel-size "$P_TP" \
+    --data-parallel-size "$P_DP" \
+    "${dp_args[@]}" \
     --pipeline-parallel-size 1 \
     --enable-expert-parallel \
     --distributed-executor-backend mp \

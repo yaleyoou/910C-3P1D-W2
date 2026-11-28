@@ -139,7 +139,7 @@ done
 
 run_tag="agentx_${trial}_d${duration}_c${concurrency}"
 for group in "${groups[@]}"; do
-  echo "=== Starting AgentX group $group (tag=$run_tag, topology=$((n_nodes-1))P1D, duration=${duration}s, c=${concurrency}) ==="
+  echo "=== Starting AgentX group $group (tag=$run_tag, topology=$((n_nodes-1))P[DP${P_DP:-1}xTP$((16/${P_DP:-1}))]+1D[DP${D_DP:-1}xTP$((16/${D_DP:-1}))], duration=${duration}s, c=${concurrency}) ==="
   for ((i=0; i<n_nodes; i++)); do
     on "$i" test -s "$base/node.sh"
     on "$i" test -s "$base/cluster.env"

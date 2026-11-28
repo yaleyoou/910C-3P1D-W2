@@ -3,13 +3,20 @@
 # Supports both NOPASSWD sudo and password sudo (prompts once and keeps in memory).
 # Usage:
 #   bash case.sh F1 r1
+#   bash case.sh F1 r1 perf                  # Single-pass perf-only (skips cal & blocks)
 #   bash case.sh F1,F5,F2,F3,F4,EC1,ES1,EJ1 r1
 #   bash case.sh all r1
 set -euo pipefail
 [[ -d /home/miniconda3/bin ]] && export PATH="/home/miniconda3/bin:$PATH"
 cd "$(dirname "$0")"; base=$PWD
 source cluster.env
-groups_arg=${1:?F1 | F1,F5,... | all}; trial=${2:?r1}
+groups_arg=${1:?F1 | F1,F5,... | all}; trial=${2:?r1}; mode=${3:-${CASE_MODE:-all}}
+[[ ${PERF_ONLY:-0} == 1 ]] && mode=perf
+case $mode in
+  all)  phases=(cal perf blocks) ;;
+  perf) phases=(perf) ;;
+  *) echo "Unknown mode '$mode' (expected: all | perf)" >&2; exit 2 ;;
+esac
 [[ $trial =~ ^[A-Za-z0-9_-]+$ && $base =~ ^/[A-Za-z0-9_./-]+$ ]]
 if [[ $groups_arg == all ]]; then
   groups=(F1 F5 F2 F3 F4 EC1 ES1 EJ1)
@@ -120,7 +127,7 @@ done
 python3 tools/verify_w2.py data/checkpoints/W2/frozen
 
 for group in "${groups[@]}"; do
-  echo "=== Starting group $group (trial $trial, topology=$((n_nodes-1))P1D) ==="
+  echo "=== Starting group $group (trial $trial, topology=$((n_nodes-1))P[DP${P_DP:-1}xTP$((16/${P_DP:-1}))]+1D[DP${D_DP:-1}xTP$((16/${D_DP:-1}))], mode=$mode) ==="
   for ((i=0; i<n_nodes; i++)); do
     on "$i" test -s "$base/node.sh"
     on "$i" test -s "$base/cluster.env"
@@ -130,7 +137,7 @@ for group in "${groups[@]}"; do
     on_root "$i" bash "$base/node.sh" check "${roles[$i]}" "$group"
     if on_root "$i" "${dkr[@]}" inspect "$name" >/dev/null 2>&1; then echo "Container already exists on ${roles[$i]}";exit 1;fi
   done
-  for phase in cal perf blocks; do
+  for phase in "${phases[@]}"; do
     echo "--- [$group/$trial] phase: $phase ---"
     pids=()
     for ((i=0; i<n_nodes; i++)); do on_root "$i" bash "$base/node.sh" up "${roles[$i]}" "$group" "$phase" "$trial" & pids+=("$!"); done
@@ -154,20 +161,42 @@ for group in "${groups[@]}"; do
     on_root 0 bash "$base/node.sh" down
   done
   as_root chmod -R a+rX "$base/runs" 2>/dev/null || true
-  done_runs=()
-  seen=" "
-  for g in F1 F5 F2 F3 F4 EC1 ES1 EJ1 $(awk '$1 !~ /^#/ && $1 != "case" {print $1}' cases.tsv); do
-    if [[ $seen != *" $g "* && -s "$base/runs/$g/$trial/blocks/p1/result.csv" ]]; then
-      done_runs+=("$base/runs/$g/$trial")
-      seen+="$g "
+  if [[ $mode == perf ]]; then
+    pout="$base/runs/$group/$trial/perf/p1"
+    python3 tools/result.py --perf-only "$base/runs/$group/$trial" --details "$pout/per-P.json" | write_root "$pout/result.csv"
+    python3 tools/result.py --perf-only --markdown "$base/runs/$group/$trial" | write_root "$pout/result.md"
+    cat "$pout/result.md"
+    done_runs=()
+    seen=" "
+    for g in F1 F5 F2 F3 F4 EC1 ES1 EJ1 $(awk '$1 !~ /^#/ && $1 != "case" {print $1}' cases.tsv); do
+      if [[ $seen != *" $g "* && -s "$base/runs/$g/$trial/perf/p1/result.csv" ]]; then
+        done_runs+=("$base/runs/$g/$trial")
+        seen+="$g "
+      fi
+    done
+    if ((${#done_runs[@]} > 0)); then
+      python3 tools/result.py --perf-only "${done_runs[@]}" | write_root "$base/runs/summary_${trial}_perf.csv"
+      python3 tools/result.py --perf-only --markdown "${done_runs[@]}" | write_root "$base/runs/summary_${trial}_perf.md"
     fi
-  done
-  if ((${#done_runs[@]} > 0)); then
-    python3 tools/result.py "${done_runs[@]}" | write_root "$base/runs/summary_${trial}.csv"
-    python3 tools/result.py --markdown "${done_runs[@]}" | write_root "$base/runs/summary_${trial}.md"
+    echo "Result CSV: $pout/result.csv"
+    echo "Result MD:  $pout/result.md"
+    echo "Summary MD: $base/runs/summary_${trial}_perf.md"
+  else
+    done_runs=()
+    seen=" "
+    for g in F1 F5 F2 F3 F4 EC1 ES1 EJ1 $(awk '$1 !~ /^#/ && $1 != "case" {print $1}' cases.tsv); do
+      if [[ $seen != *" $g "* && -s "$base/runs/$g/$trial/blocks/p1/result.csv" ]]; then
+        done_runs+=("$base/runs/$g/$trial")
+        seen+="$g "
+      fi
+    done
+    if ((${#done_runs[@]} > 0)); then
+      python3 tools/result.py "${done_runs[@]}" | write_root "$base/runs/summary_${trial}.csv"
+      python3 tools/result.py --markdown "${done_runs[@]}" | write_root "$base/runs/summary_${trial}.md"
+    fi
+    echo "Result CSV: $base/runs/$group/$trial/blocks/p1/result.csv"
+    echo "Result MD:  $base/runs/$group/$trial/blocks/p1/result.md"
+    echo "Summary MD: $base/runs/summary_${trial}.md"
   fi
-  echo "Result CSV: $base/runs/$group/$trial/blocks/p1/result.csv"
-  echo "Result MD:  $base/runs/$group/$trial/blocks/p1/result.md"
-  echo "Summary MD: $base/runs/summary_${trial}.md"
 done
 

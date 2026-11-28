@@ -39,7 +39,7 @@ while time.time() < deadline:
     time.sleep(3)
 sys.exit(f"Timed out waiting for Mooncake Store segments to register: {last_err}")
 PY
-python3 -c 'import os,json;ps=[k for k in ["P1","P2","P3"] if os.environ.get(k)];open("/run-data/params.json","w").write(json.dumps({"case":os.environ["CASE"],"ps":int(os.environ["P_STORE"]),"p_count":len(ps),"ds":int(os.environ["D_STORE"]),"sparse":int(os.environ["SPARSE"]),"d_dp":int(os.environ.get("D_DP","1")),"hosts":[os.environ[k] for k in ps+["D"]]}))'
+python3 -c 'import os,json;ps=[k for k in ["P1","P2","P3"] if os.environ.get(k)];open("/run-data/params.json","w").write(json.dumps({"case":os.environ["CASE"],"ps":int(os.environ["P_STORE"]),"p_count":len(ps),"ds":int(os.environ["D_STORE"]),"sparse":int(os.environ["SPARSE"]),"p_dp":int(os.environ.get("P_DP","1")),"d_dp":int(os.environ.get("D_DP","1")),"hosts":[os.environ[k] for k in ps+["D"]]}))'
 if [[ $PHASE == cal ]]; then
   pids=()
   trap 'for x in "${pids[@]}"; do kill "$x" 2>/dev/null || true; done' EXIT

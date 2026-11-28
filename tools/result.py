@@ -17,13 +17,16 @@ def time_mean(samples,lo,hi,fn):
             area+=dt*fn(x); covered+=dt
     assert abs(hi-lo-covered)<0.01,('coverage',covered,hi-lo)
     return area/covered
-def summarize(run, details=None):
+def summarize(run, details=None, perf_only=False):
     perf=run/'perf/p1'; block=run/'blocks/p1'
-    s=verify(perf); verify(block)
-    if not read(block/'request-audit.json')['complete']:raise ValueError('D trace audit incomplete')
-    ov=read(block/'overlap.json')
-    assert ov['complete'] and ov['snapshot_errors']==0
-    o=ov['all_snapshots'];assert abs(o['covered_s']-ov['seconds'])<.1
+    s=verify(perf)
+    ov=o=None
+    if not perf_only:
+        verify(block)
+        if not read(block/'request-audit.json')['complete']:raise ValueError('D trace audit incomplete')
+        ov=read(block/'overlap.json')
+        assert ov['complete'] and ov['snapshot_errors']==0
+        o=ov['all_snapshots'];assert abs(o['covered_s']-ov['seconds'])<.1
     lo,hi=s['first_send_unix'],s['last_done_unix']
     a=read(perf/'before.json');z=read(perf/'after.json')
     samples=[a]+rows(perf/'metrics.jsonl')+[z]
@@ -41,7 +44,8 @@ def summarize(run, details=None):
               'queue':avg(lambda x:x[p]['waiting']),
               'store_GiB':avg(lambda x:x['master'][p+'_segment_allocated_bytes'])} for p in ps}
     g=read(perf/'params.json')
-    assert g==read(block/'params.json')
+    if not perf_only:
+        assert g==read(block/'params.json')
     p_count=g.get('p_count',len(ps))
     d_dp=g.get('d_dp',1)
     sparse_label=f"{g['sparse']}×{d_dp}" if d_dp>1 else f"{g['sparse']}"
@@ -51,19 +55,24 @@ def summarize(run, details=None):
       'D 平均容量等待数':avg(lambda x:x['D']['capacity']),'P 合计前缀命中率 %':100*h/q,
       'P Store 平均占用 GiB':sum(v['store_GiB'] for v in per_p.values()),
       'D Store 平均占用 GiB':avg(lambda x:x['master']['D_segment_allocated_bytes']),
-      'D 逻辑 KV 平均使用率 %':100*avg(lambda x:x['D']['kv_usage']),
-      'D 平均活跃主 KV GiB':o['mean_active_GiB'],'平均重复量 GiB':o['mean_overlap_GiB'],'活跃主 KV 重复率 %':o['ratio_pct'],
-      '曾重复 KV token 位置数':ov['ever_overlapped_tokens'],
-      '全 workload 曾重复 KV 占比 %':ov['workload_overlap_pct']}
+      'D 逻辑 KV 平均使用率 %':100*avg(lambda x:x['D']['kv_usage'])}
+    if not perf_only:
+        result.update({
+          'D 平均活跃主 KV GiB':o['mean_active_GiB'],'平均重复量 GiB':o['mean_overlap_GiB'],'活跃主 KV 重复率 %':o['ratio_pct'],
+          '曾重复 KV token 位置数':ov['ever_overlapped_tokens'],
+          '全 workload 曾重复 KV 占比 %':ov['workload_overlap_pct']})
     if details is not None:
         details.write_text(json.dumps(per_p,indent=2))
     return result
-def format_markdown(results):
+def format_markdown(results, perf_only=False):
     headers=['组别','D Store / sparse 配额（GiB）','总预算 GiB','输出 tok/s','TTFT 均值 / P95（s）','平均 TPOT（ms）',
              'P 平均排队数','D 平均容量等待数','P 合计前缀命中率','P Store 平均对象占用（GiB）','D Store 平均对象占用（GiB）',
-             'D 逻辑 KV 平均使用率','平均活跃主 KV（GiB）','平均重复量（GiB）','全局重复比例',
-             '曾重复 KV token 位置数','全 workload 曾重复 KV 占比']
-    lines=['# W2 配额、性能、占用与主 KV 重复情况','',
+             'D 逻辑 KV 平均使用率']
+    if not perf_only:
+        headers+=['平均活跃主 KV（GiB）','平均重复量（GiB）','全局重复比例',
+                  '曾重复 KV token 位置数','全 workload 曾重复 KV 占比']
+    title='# W2 配额、性能与池占用（仅 perf）' if perf_only else '# W2 配额、性能、占用与主 KV 重复情况'
+    lines=[title,'',
            '| '+' | '.join(headers)+' |',
            '| --- | '+' | '.join(['---:']*(len(headers)-1))+' |']
     for r in results:
@@ -80,12 +89,15 @@ def format_markdown(results):
             f"{r['P Store 平均占用 GiB']:.1f}",
             f"{r['D Store 平均占用 GiB']:.1f}",
             f"{r['D 逻辑 KV 平均使用率 %']:.1f}%",
-            f"{r['D 平均活跃主 KV GiB']:.2f}",
-            f"{r['平均重复量 GiB']:.2f}",
-            f"{r['活跃主 KV 重复率 %']:.2f}%",
-            f"{r['曾重复 KV token 位置数']:,}",
-            f"{r['全 workload 曾重复 KV 占比 %']:.2f}%",
         ]
+        if not perf_only:
+            cells+=[
+                f"{r['D 平均活跃主 KV GiB']:.2f}",
+                f"{r['平均重复量 GiB']:.2f}",
+                f"{r['活跃主 KV 重复率 %']:.2f}%",
+                f"{r['曾重复 KV token 位置数']:,}",
+                f"{r['全 workload 曾重复 KV 占比 %']:.2f}%",
+            ]
         lines.append('| '+' | '.join(cells)+' |')
     return '\n'.join(lines)+'\n'
 if __name__=='__main__':
@@ -93,11 +105,12 @@ if __name__=='__main__':
     parser.add_argument('runs',type=Path,nargs='+')
     parser.add_argument('--details',type=Path)
     parser.add_argument('--markdown',action='store_true')
+    parser.add_argument('--perf-only',action='store_true')
     args=parser.parse_args()
     if args.details and len(args.runs)!=1: parser.error('--details takes one run')
-    results=[summarize(x,args.details) for x in args.runs]
+    results=[summarize(x,args.details,perf_only=args.perf_only) for x in args.runs]
     if args.markdown:
-        sys.stdout.write(format_markdown(results))
+        sys.stdout.write(format_markdown(results,perf_only=args.perf_only))
     else:
         out=csv.DictWriter(sys.stdout,results[0].keys());out.writeheader()
         out.writerows([{k:round(v,3) if isinstance(v,float) else v for k,v in r.items()} for r in results])
