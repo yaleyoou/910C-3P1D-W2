@@ -167,6 +167,7 @@ for group in "${groups[@]}"; do
   for ((i=1; i<n_nodes; i++)); do on_root "$i" bash "$base/node.sh" down; done
   on_root 0 bash "$base/node.sh" down
 
+  as_root chmod -R a+rX "$base/runs" 2>/dev/null || true
   done_runs=()
   seen=" "
   for g in F1 F5 F2 F3 F4 EC1 ES1 EJ1 $(awk '$1 !~ /^#/ && $1 != "case" {print $1}' cases.tsv); do

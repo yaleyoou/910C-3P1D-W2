@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 022
 [[ -d /home/miniconda3/bin ]] && export PATH="/home/miniconda3/bin:$PATH"
 cd "$(dirname "$0")"
 source cluster.env
@@ -74,6 +75,7 @@ case $PHASE in cal|perf|blocks) ;; *) exit 2 ;; esac
 [[ $TRIAL =~ ^[A-Za-z0-9_-]+$ ]]
 output="$PWD/runs/$CASE/$TRIAL/$PHASE/$ROLE"
 mkdir -p "$(dirname "$output")"; mkdir "$output"; mkdir "$output/logs"
+chmod a+rX "$PWD/runs" "$PWD/runs/$CASE" "$PWD/runs/$CASE/$TRIAL" "$PWD/runs/$CASE/$TRIAL/$PHASE" "$output" "$output/logs" 2>/dev/null || true
 cp cluster.env cases.tsv "$output/"
 export P1 P2 P3 D IFACE ROLE PHASE CASE TRIAL NODE_IP P_STORE SPARSE D_STORE
 args=(); for var in P1 P2 P3 D IFACE ROLE PHASE CASE TRIAL NODE_IP P_STORE SPARSE D_STORE; do args+=(-e "$var"); done
