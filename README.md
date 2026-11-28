@@ -201,6 +201,41 @@ bash case.sh all r1
 
 每跑完一组，`runs/summary_r1.md` 都会自动更新为与 `evidence/旧1P1D结果.md` 完全一致的 17 列 Markdown 表格。
 
+### 更换节点 / 已有 4 台可用节点时的标准更新与开跑流程
+
+当更换了新节点或 4 台机器全部空闲就绪时，在选作 **P1 控制机**的那台机器上按下面 4 步操作即可：
+
+```bash
+cd /home/c60040001/yxy/910C-3P1D-W2
+
+# 1. 更新最新脚本（保留你本地改好的 cluster.env 和 cases.tsv，避免 git pull 冲突）
+git fetch origin && git checkout origin/main -- agentx.sh bench.sh case.sh logs.sh node.sh services/ setup_nodes.sh stop.sh watch.sh tools/
+
+# 2. 确认 4 台目标节点的宿主机 NPU 驱动版本均为 26.1.3（把 IP 换成实际节点）
+for ip in P1_IP P2_IP P3_IP D_IP; do echo -n "$ip -> "; ssh -o BatchMode=yes -o ConnectTimeout=3 "$ip" 'head -n1 /usr/local/Ascend/driver/version.info 2>/dev/null || echo N/A' 2>/dev/null || echo UNREACHABLE; done
+
+# 3. 编辑 cluster.env，填好 P1 / P2 / P3 / D（P1 必须是当前登录的这台）及 P_STORE / MODEL_DIR，
+#    并确认没有残留指向旧机器的未注释 SSH_P2 / SSH_P3 / SSH_D 行；
+#    若 P1 到其余三台尚未配置免密 SSH，先执行一次：
+test -f ~/.ssh/id_ed25519 || ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519
+source cluster.env && for h in "${SSH_P2:-$P2}" "${SSH_P3:-$P3}" "${SSH_D:-$D}"; do ssh-copy-id -o StrictHostKeyChecking=accept-new "$h"; done
+
+# 4. 一键同步 4 台仓库+镜像包、并行 docker load（已有镜像自动跳过）、开 D 的 device-share 并体检：
+bash setup_nodes.sh
+
+# （若某台残留旧的 glm52-3p1d 容器，一键清干净）
+bash stop.sh
+
+# 5. 开跑（若某台曾跑过 r1，换新编号如 r5 避免 runs/ 目录重名）
+bash case.sh F1 r5          # 单组 W2（或 bash case.sh all r5 连跑全部组）
+# bash agentx.sh F1 r1      # 或跑 AgentX 3600s 零延迟回放（见第 7 节）
+```
+
+跑起来后在 P1 新开终端即可使用三件套：
+- **实时进度看板**：`sudo bash watch.sh`
+- **本机/远程实时日志**：`bash logs.sh d`、`bash logs.sh p1`、`bash logs.sh p2`、`bash logs.sh p3`、`bash logs.sh proxy`
+- **一键安全停全部节点**：`bash stop.sh`
+
 ### 临时跳过被占用的 P 节点（切换为 2P1D / 1P1D）
 
 如果某台 P 节点（例如 `P2`）当前被他人占用，无需改动任何脚本，按下面 4 步即可直接切到 **2P1D**（留空 `P2` 和 `P3` 则自动按 **1P1D** 运行）：
@@ -209,7 +244,7 @@ bash case.sh all r1
 cd /home/c60040001/yxy/910C-3P1D-W2
 
 # 1. 拉取最新脚本（保留本地 cluster.env）
-git fetch origin && git checkout origin/main -- agentx.sh bench.sh case.sh node.sh services/proxy.sh setup_nodes.sh tools/
+git fetch origin && git checkout origin/main -- agentx.sh bench.sh case.sh logs.sh node.sh services/ setup_nodes.sh stop.sh watch.sh tools/
 
 # 2. 将被占用的 P 置空（以跳过 P2 为例；恢复 3P1D 时把 IP 填回即可）
 sed -i 's/^P2=.*/P2=/' cluster.env && grep -E '^(P1|P2|P3|D|P_STORE)=' cluster.env
@@ -218,13 +253,13 @@ sed -i 's/^P2=.*/P2=/' cluster.env && grep -E '^(P1|P2|P3|D|P_STORE)=' cluster.e
 # sed -i 's/^P_STORE=.*/P_STORE=96/' cluster.env
 
 # 3. 仅同步配置与脚本到实际参与的远端节点（不碰被占用的 P2，无需 rsync）
-source cluster.env && for h in "${SSH_P3:-$P3}" "${SSH_D:-$D}"; do tar -cf - cluster.env cases.tsv agentx.sh bench.sh case.sh node.sh setup_nodes.sh services tools | ssh "$h" "tar -xf - -C '$PWD'"; done
+source cluster.env && for h in "${SSH_P3:-$P3}" "${SSH_D:-$D}"; do tar -cf - cluster.env cases.tsv agentx.sh bench.sh case.sh logs.sh node.sh setup_nodes.sh stop.sh watch.sh services tools | ssh "$h" "tar -xf - -C '$PWD'"; done
 
 # 4. 用新的 trial 名启动（日志会打印 topology=2P1D，proxy.log 显示 Initialized 2 prefill clients）
 bash case.sh F1 r2
 ```
 
-> 若之前失败的 3P1D 运行在节点上残留了旧容器，用 `node.sh down` 只会清理带 `experiment=glm52-3p1d` 标签的本实验容器，不会影响同节点他人的作业；也可用 `ssh -tt <节点IP> "sudo docker rm -f glm52-3p1d"` 精准删除。
+> 若之前失败的 3P1D 运行在节点上残留了旧容器，用 `bash stop.sh` 或 `node.sh down` 只会清理带 `experiment=glm52-3p1d` 标签的本实验容器，不会影响同节点他人的作业；也可用 `ssh -tt <节点IP> "sudo docker rm -f glm52-3p1d"` 精准删除。
 
 ## Windows 一键下载镜像、MemFabric 和 W2
 
@@ -481,6 +516,8 @@ curl --noproxy '*' -fsS "http://$(. ./cluster.env; echo "$P1"):50089/metrics" | 
 ```
 
 **常见问题速查**：
+- **容器启动报 `SystemError: <built-in function get_arch> returned NULL` / `Can't get ascend_hal device count` / `dcmi module initialize failed (-8005)`**：说明该节点宿主机 NPU 驱动版本过旧（例如 `25.5.0`），与本镜像内 CANN 不兼容。检查 `/usr/local/Ascend/driver/version.info`，更换为 **`26.1.3`** 驱动节点，或联系集群管理员将该节点 NPU 驱动与固件升级到 `26.1.3` 并重启。
+- **启动报 `zmq.error.ZMQError: Address already in use (addr='tcp://...:4100x')`**：旧版 `kv_port=40000/41000` 落在 Linux 默认临时端口段 `32768–60999` 内可能撞端口。拉取最新版 `services/p.sh` 与 `services/d.sh`（已改为 `27000/28000`）并同步到所有节点即可。
 - **读 `runs/` 报 `Permission denied`**：部分系统（如 EulerOS）`root` 默认 `umask=0077`。新版 `node.sh` / `case.sh` / `agentx.sh` 已自动设置 `umask 022` 与 `chmod a+rX runs`；若查看旧版本跑出的目录，执行一次 `sudo chmod -R a+rX runs` 即可。
 - **报 `Container already exists on ...` / 需要一键停止全部活跃节点上的服务**：运行 `bash stop.sh`（只需输一次 `sudo` 密码，只停止并清理带 `experiment=glm52-3p1d` 标签的本实验容器，不会影响同节点他人的作业）。
 - **所有活跃节点 `200 OK` 但迟迟没发请求**：查看 `proxy.log` 的 `Initialized N prefill clients` 核对实际启用的 P 数量是否与 `cluster.env` 一致；另外 `cal` 校准阶段只发 N 条探针、不生成 `events.jsonl` 与 `metrics.jsonl`，属于正常现象。
@@ -549,12 +586,20 @@ python3 tools/result.py --markdown runs/{F1,F5,F2,F3,F4,EC1,ES1,EJ1}/r1 > summar
 
 ## 7. AgentX 3600s 零延迟回放（cc-traces-weka-062126-256k）
 
-若要直接复用当前部署的模型、镜像与 `cases.tsv` 配额表，对全量 AgentX 轨迹（`semianalysisai/cc-traces-weka-062126-256k` 的 `traces.jsonl`）做**忽略调用等待时间（零延迟）的 3600s 压测**，只需把下载好的 `traces.jsonl` 放到仓库的 `data/traces.jsonl`（只需放在 P1 节点即可，无需安装 AIPerf）：
+若要直接复用当前部署的模型、镜像与 `cases.tsv` 配额表，对全量 AgentX 轨迹（`semianalysisai/cc-traces-weka-062126-256k` 的 `traces.jsonl`）做**忽略调用等待时间（零延迟）的 3600s 压测**，只需把下载好的 `traces.jsonl` 放到 **P1 节点**仓库的 `data/traces.jsonl`（其余节点不需要，无需安装 AIPerf）：
+
+> **注意**：Docker 容器只挂载仓库根目录到 `/deploy:ro`，**不要用软链接 `ln -s` 指向仓库外路径**。同磁盘请用**硬链接 `ln -f`**（零额外空间、瞬间完成），跨磁盘则用 `cp`。
 
 ```bash
 cd /home/c60040001/yxy/910C-3P1D-W2
 
-# 单组测试（默认 3600s、并发 16 棵根会话树、data/traces.jsonl）：
+# 把已下载的 traces.jsonl 硬链接进仓库 data/ 目录（按实际路径替换）：
+mkdir -p data && ln -f /home/c60040001/yxy/agentx/cc-traces-weka-062126-256k/traces.jsonl data/traces.jsonl
+
+# （推荐先跑 120s 快速冒烟确认链路通畅，可选）：
+bash agentx.sh F1 smoke1 120 16
+
+# 正式单组 3600s 测试（默认 3600s、并发 16 棵根会话树、data/traces.jsonl）：
 bash agentx.sh F1 r1
 
 # 自定义时长与并发（例如 3600s、并发 32 棵会话树）：
@@ -564,6 +609,7 @@ bash agentx.sh F1 r1 3600 32
 bash agentx.sh F1,F5,F2,EC1,ES1,EJ1 r1 3600 16
 ```
 
+- **实时监控与停服**：同样直接用 `sudo bash watch.sh` 看实时已完成请求数/吞吐/TTFT/TPOT/P&D 排队/Store 占用，用 `bash logs.sh d` 看日志，用 `bash stop.sh` 一键停服。
 - **回放机制**：完整保留每棵会话树的顺序依赖与并发 subagent 批次，忽略原轨迹的 `t` / `think_time` 等待；按 64-token `hash_ids` 确定性还原共享前缀 token IDs，走 `/v1/completions` 固定输出长度（`out=0` 自动钳位为 `1`）。到 3600s 停止新发请求并自然收尾在途请求（若希望到点立即中断在途请求，前置 `AGENTX_HARD_STOP=1`）。
 - **输出报表**：自动保存单组 `runs/<组>/agentx_<trial>_d3600_c16/perf/p1/result.md`（含收尾总口径）、`result-window.md`（严格 3600s 窗口内口径）、`per-P.json` 及跨组汇总表 `runs/summary_agentx_<trial>_d3600_c16.md`，包含完成请求数、输出 tok/s、TTFT 均值/P95、平均 TPOT、P 平均排队数、D 平均容量等待数、P 合计前缀命中率、P/D Store 平均占用与 D 逻辑 KV 平均使用率。
 
